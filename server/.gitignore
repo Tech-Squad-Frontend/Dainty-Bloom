@@ -1,7 +1,9 @@
 node_modules/
 dist/
 .env
+.env.example
 .env.stripe-test
+.env.stripe-test.example
 coverage/
 storage/
 uploads/
