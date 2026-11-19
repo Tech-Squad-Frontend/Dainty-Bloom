@@ -5,5 +5,5 @@ dist/
 .env.stripe-test
 .env.stripe-test.example
 coverage/
-storage/
+/storage/
 uploads/
