@@ -201,6 +201,12 @@ export const customRequestTransitionSchema = z.object({
   query: z.object({}),
 });
 
+export const customRequestChangesSchema = z.object({
+  params: z.object({ id: z.string().regex(/^[a-f\d]{24}$/i) }),
+  body: z.object({ message: safeText(1, 2000) }).strict(),
+  query: z.object({}),
+});
+
 const optionalSafeText = (max: number) =>
   z.preprocess(
     (value) =>

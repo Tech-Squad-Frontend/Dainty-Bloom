@@ -15,9 +15,17 @@ import {
   Shirt,
   Sparkles,
   Coffee,
+  Lightbulb,
   Star,
   Sun,
   Moon,
+  Flower2,
+  Sprout,
+  Wine,
+  Table2,
+  PawPrint,
+  Snowflake,
+  Gem,
 } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 import type { CatalogCard } from '@/lib/api/types';
@@ -447,15 +455,31 @@ export function Pagination({
 
 export function ProductLineIcon({ value }: { value: string }) {
   const normalized = value.toLowerCase();
-  const Icon = normalized.includes('3d')
-    ? Box
-    : normalized.includes('paint') || normalized.includes('canvas')
-      ? Palette
-      : normalized.includes('mug')
-        ? Coffee
-        : normalized.includes('shirt') || normalized.includes('t-shirt')
-          ? Shirt
-          : Sparkles;
+  const Icon = normalized.includes('coaster') || normalized.includes('flower')
+    ? Flower2
+    : normalized.includes('vase') || normalized.includes('planter')
+      ? Sprout
+      : normalized.includes('lamp') || normalized.includes('light')
+      ? Lightbulb
+      : normalized.includes('wine') || normalized.includes('glass rack')
+        ? Wine
+        : normalized.includes('side table')
+          ? Table2
+          : normalized.includes('pet') || normalized.includes('bowl stand')
+            ? PawPrint
+            : normalized.includes('seasonal')
+              ? Snowflake
+              : normalized.includes('jewelry')
+                ? Gem
+                : normalized.includes('3d')
+                  ? Box
+                  : normalized.includes('paint') || normalized.includes('canvas')
+                    ? Palette
+                    : normalized.includes('mug')
+                      ? Coffee
+                      : normalized.includes('shirt') || normalized.includes('t-shirt')
+                        ? Shirt
+                        : Sparkles;
   return <Icon aria-hidden="true" />;
 }
 

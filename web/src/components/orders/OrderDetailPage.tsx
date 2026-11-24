@@ -306,178 +306,207 @@ function OrderDetailView({
           <p>{error}</p>
         </div>
       ) : null}
-      <section className="commerce-card">
-        <h2>Order progress</h2>
-        <ol className="order-timeline">
-          {order.statusHistory.length ? (
-            order.statusHistory.map((entry, index) => (
-              <li
-                className="is-complete"
-                key={`${entry.to}-${entry.at}-${index}`}
-              >
-                <strong>{orderStatusLabel(entry.to)}</strong>
-                <time dateTime={entry.at}>{formatDate(entry.at)}</time>
-              </li>
-            ))
-          ) : (
-            <li className="is-complete">
-              <strong>{orderStatusLabel(order.status)}</strong>
-              <time dateTime={order.createdAt}>
-                {formatDate(order.createdAt)}
-              </time>
-            </li>
-          )}
-        </ol>
-      </section>
-      <section className="commerce-card">
-        <h2>Items</h2>
-        <div className="order-detail__items">
-          {order.items.map((item) => (
-            <article className="order-detail-item" key={item.id}>
-              <div className="order-detail-item__image">
-                {item.image ? (
-                  <Image src={item.image} alt="" fill sizes="72px" />
-                ) : (
-                  <FileImage aria-hidden="true" />
-                )}
-              </div>
+      <div className="order-detail__layout">
+        <div className="order-detail__main">
+          <section className="commerce-card order-detail__progress">
+            <div className="order-detail__section-heading">
               <div>
-                <h3>{item.title}</h3>
-                <p>Quantity: {item.quantity}</p>
-                {item.selectedOptions.length ? (
-                  <ul className="cart-options">
-                    {item.selectedOptions.map((option) => (
-                      <li key={option.key}>
-                        {option.label ?? option.key}:{' '}
-                        {option.valueLabel ?? option.value}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {item.artwork ? (
-                  <p className="field-hint">
-                    Artwork: {item.artwork.originalFilename ?? 'File attached'}{' '}
-                    · {artworkReviewLabel(item.artwork.reviewStatus)}
-                  </p>
-                ) : null}
+                <span className="eyebrow">Your order</span>
+                <h2>Order progress</h2>
               </div>
-              <strong>
-                {formatMoney(item.lineTotalMinor, order.totals.currency)}
-              </strong>
-              {order.status === 'artwork_rejected' &&
-              item.artwork?.reviewStatus === 'replacement_requested' ? (
-                <div className="commerce-alert commerce-alert--error order-item-alert">
-                  <AlertCircle size={18} aria-hidden="true" />
-                  <div>
-                    <p>Replacement artwork requested for {item.title}.</p>
-                    {item.artwork.reviewNote ? (
-                      <p>{item.artwork.reviewNote}</p>
-                    ) : null}
-                    <ArtworkUpload
-                      product={{
-                        artworkRequired: true,
-                        artworkRequirements: { allowedFormats: [] },
-                      }}
-                      artwork={null}
-                      progress={
-                        uploadingItemId === item.id ? uploadProgress : null
-                      }
-                      error=""
-                      onSelect={(file) => void replaceArtwork(item.id, file)}
-                      onRemove={() => undefined}
-                      mimeTypes={settings.data?.artwork.allowedMimeTypes ?? []}
-                    />
+            </div>
+            <ol className="order-timeline">
+              {order.statusHistory.length ? (
+                order.statusHistory.map((entry, index) => (
+                  <li
+                    className="is-complete"
+                    key={`${entry.to}-${entry.at}-${index}`}
+                  >
+                    <strong>{orderStatusLabel(entry.to)}</strong>
+                    <time dateTime={entry.at}>{formatDate(entry.at)}</time>
+                  </li>
+                ))
+              ) : (
+                <li className="is-complete">
+                  <strong>{orderStatusLabel(order.status)}</strong>
+                  <time dateTime={order.createdAt}>
+                    {formatDate(order.createdAt)}
+                  </time>
+                </li>
+              )}
+            </ol>
+          </section>
+          <section className="commerce-card order-detail__items-card">
+            <h2>Items</h2>
+            <div className="order-detail__items">
+              {order.items.map((item) => (
+                <article className="order-detail-item" key={item.id}>
+                  <div className="order-detail-item__image">
+                    {item.image ? (
+                      <Image src={item.image} alt="" fill sizes="72px" />
+                    ) : (
+                      <FileImage aria-hidden="true" />
+                    )}
                   </div>
-                </div>
+                  <div>
+                    <h3>{item.title}</h3>
+                    <p>Quantity: {item.quantity}</p>
+                    {item.selectedOptions.length ? (
+                      <ul className="cart-options">
+                        {item.selectedOptions.map((option) => (
+                          <li key={option.key}>
+                            {option.label ?? option.key}:{' '}
+                            {option.valueLabel ?? option.value}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {item.artwork ? (
+                      <p className="field-hint">
+                        Artwork:{' '}
+                        {item.artwork.originalFilename ?? 'File attached'} ·{' '}
+                        {artworkReviewLabel(item.artwork.reviewStatus)}
+                      </p>
+                    ) : null}
+                  </div>
+                  <strong className="order-detail-item__price">
+                    {formatMoney(item.lineTotalMinor, order.totals.currency)}
+                  </strong>
+                  {order.status === 'artwork_rejected' &&
+                  item.artwork?.reviewStatus === 'replacement_requested' ? (
+                    <div className="commerce-alert commerce-alert--error order-item-alert">
+                      <AlertCircle size={18} aria-hidden="true" />
+                      <div>
+                        <p>Replacement artwork requested for {item.title}.</p>
+                        {item.artwork.reviewNote ? (
+                          <p>{item.artwork.reviewNote}</p>
+                        ) : null}
+                        <ArtworkUpload
+                          product={{
+                            artworkRequired: true,
+                            artworkRequirements: { allowedFormats: [] },
+                          }}
+                          artwork={null}
+                          progress={
+                            uploadingItemId === item.id ? uploadProgress : null
+                          }
+                          error=""
+                          onSelect={(file) =>
+                            void replaceArtwork(item.id, file)
+                          }
+                          onRemove={() => undefined}
+                          mimeTypes={
+                            settings.data?.artwork.allowedMimeTypes ?? []
+                          }
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </section>
+          {displayShipment && order.shipment ? (
+            <section className="commerce-card order-detail__shipment">
+              <h2>Shipment</h2>
+              <p>
+                {order.shipment.carrier} · {order.shipment.trackingNumber}
+              </p>
+              {order.shipment.trackingUrl ? (
+                <a
+                  href={order.shipment.trackingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Track shipment
+                </a>
               ) : null}
-            </article>
-          ))}
+            </section>
+          ) : null}
+          <section className="commerce-card order-addresses">
+            <div>
+              <h2>Shipping address</h2>
+              <AddressDisplay address={order.shippingAddress} />
+            </div>
+            <div>
+              <h2>Billing address</h2>
+              <AddressDisplay address={order.billingAddress} />
+            </div>
+          </section>
         </div>
-      </section>
-      <section className="commerce-card order-detail__payment">
-        <h2>Payment</h2>
-        <div className="commerce-row">
-          <span>{paymentStatusLabel(order.payment.status)}</span>
-          {order.payment.status === 'pending' ? (
-            <Button loading={busy} onClick={() => void payNow()}>
-              Pay now
+        <aside
+          className="order-detail__sidebar"
+          aria-label="Payment and order summary"
+        >
+          <section className="commerce-card order-detail__payment">
+            <div className="order-detail__section-heading">
+              <div>
+                <span className="eyebrow">Payment</span>
+                <h2>{paymentStatusLabel(order.payment.status)}</h2>
+              </div>
+            </div>
+            {order.payment.status === 'pending' ? (
+              <Button
+                className="order-detail__pay-button"
+                loading={busy}
+                onClick={() => void payNow()}
+              >
+                Pay now
+              </Button>
+            ) : null}
+          </section>
+          <section className="commerce-card order-totals">
+            <h2>Totals</h2>
+            <div className="commerce-row">
+              <span>Subtotal</span>
+              <span>
+                {formatMoney(order.totals.subtotalMinor, order.totals.currency)}
+              </span>
+            </div>
+            {order.totals.discountMinor > 0 ? (
+              <div className="commerce-row">
+                <span>Discount</span>
+                <span>
+                  −
+                  {formatMoney(
+                    order.totals.discountMinor,
+                    order.totals.currency,
+                  )}
+                </span>
+              </div>
+            ) : null}
+            <div className="commerce-row">
+              <span>Shipping</span>
+              <span>
+                {formatMoney(order.totals.shippingMinor, order.totals.currency)}
+              </span>
+            </div>
+            {order.totals.taxMinor > 0 ? (
+              <div className="commerce-row">
+                <span>Tax</span>
+                <span>
+                  {formatMoney(order.totals.taxMinor, order.totals.currency)}
+                </span>
+              </div>
+            ) : null}
+            <div className="commerce-row commerce-summary__total">
+              <strong>Total</strong>
+              <strong>
+                {formatMoney(order.totals.totalMinor, order.totals.currency)}
+              </strong>
+            </div>
+          </section>
+          <div className="order-detail__actions">
+            <Button variant="secondary" onClick={() => router.push('/shop')}>
+              Continue shopping
             </Button>
-          ) : null}
-        </div>
-      </section>
-      {displayShipment && order.shipment ? (
-        <section className="commerce-card">
-          <h2>Shipment</h2>
-          <p>
-            {order.shipment.carrier} · {order.shipment.trackingNumber}
-          </p>
-          {order.shipment.trackingUrl ? (
-            <a
-              href={order.shipment.trackingUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Track shipment
-            </a>
-          ) : null}
-        </section>
-      ) : null}
-      <section className="commerce-card order-addresses">
-        <div>
-          <h2>Shipping address</h2>
-          <AddressDisplay address={order.shippingAddress} />
-        </div>
-        <div>
-          <h2>Billing address</h2>
-          <AddressDisplay address={order.billingAddress} />
-        </div>
-      </section>
-      <section className="commerce-card order-totals">
-        <h2>Totals</h2>
-        <div className="commerce-row">
-          <span>Subtotal</span>
-          <span>
-            {formatMoney(order.totals.subtotalMinor, order.totals.currency)}
-          </span>
-        </div>
-        {order.totals.discountMinor > 0 ? (
-          <div className="commerce-row">
-            <span>Discount</span>
-            <span>
-              −{formatMoney(order.totals.discountMinor, order.totals.currency)}
-            </span>
+            {canCancel ? (
+              <Button variant="danger" onClick={() => setCancelOpen(true)}>
+                Cancel order
+              </Button>
+            ) : null}
           </div>
-        ) : null}
-        <div className="commerce-row">
-          <span>Shipping</span>
-          <span>
-            {formatMoney(order.totals.shippingMinor, order.totals.currency)}
-          </span>
-        </div>
-        {order.totals.taxMinor > 0 ? (
-          <div className="commerce-row">
-            <span>Tax</span>
-            <span>
-              {formatMoney(order.totals.taxMinor, order.totals.currency)}
-            </span>
-          </div>
-        ) : null}
-        <div className="commerce-row commerce-summary__total">
-          <strong>Total</strong>
-          <strong>
-            {formatMoney(order.totals.totalMinor, order.totals.currency)}
-          </strong>
-        </div>
-      </section>
-      <div className="cart-line__actions">
-        <Button variant="secondary" onClick={() => router.push('/shop')}>
-          Continue shopping
-        </Button>
-        {canCancel ? (
-          <Button variant="danger" onClick={() => setCancelOpen(true)}>
-            Cancel order
-          </Button>
-        ) : null}
+        </aside>
       </div>
       <ConfirmDialog
         open={cancelOpen}

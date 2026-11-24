@@ -12,13 +12,17 @@ export const CUSTOM_REQUEST_STATUSES = [
   'accepted',
   'declined',
   'offer_created',
+  'changes_requested',
   'completed',
 ] as const;
 export type CustomRequestStatus = (typeof CUSTOM_REQUEST_STATUSES)[number];
 
 export const CUSTOM_REQUEST_RESPONSE_STATUSES = [
+  'under_review',
   'accepted',
   'declined',
+  'offer_created',
+  'changes_requested',
 ] as const;
 export type CustomRequestResponseStatus =
   (typeof CUSTOM_REQUEST_RESPONSE_STATUSES)[number];
@@ -27,6 +31,7 @@ export const CUSTOM_REQUEST_NOTIFICATION_STATUSES = [
   'pending',
   'sent',
   'failed',
+  'not_verified',
 ] as const;
 export type CustomRequestNotificationStatus =
   (typeof CUSTOM_REQUEST_NOTIFICATION_STATUSES)[number];

@@ -3,8 +3,8 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button, ErrorState } from '@/components/ui';
 import { api, ApiError } from '@/lib/api/client';
@@ -17,11 +17,12 @@ const STATUS_LABELS: Record<CustomRequestStatus, string> = {
   accepted: 'Accepted',
   declined: 'Declined',
   offer_created: 'Offer created',
+  changes_requested: 'Changes requested',
   completed: 'Completed',
 };
 
 const OFFER_STATUS_LABELS: Record<CustomOfferSummary['status'], string> = {
-  available: 'Created — not purchasable yet',
+  available: 'Ready for your review',
   reserved: 'Reserved',
   purchased: 'Purchased',
   expired: 'Expired',
@@ -37,23 +38,52 @@ function offerPrice(minor: number, currency: string): string {
 
 export function CustomRequestHistory() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
   const [selectedId, setSelectedId] = useState('');
+  const [changeMessage, setChangeMessage] = useState('');
+  const [actionError, setActionError] = useState('');
+  const queryClient = useQueryClient();
   const requests = useQuery({
     queryKey: ['customer-custom-requests'],
     queryFn: api.customerCustomRequests,
     enabled: Boolean(user && user.role === 'customer'),
     retry: false,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
   });
   const items = requests.data ?? [];
+  const requestedId = searchParams.get('request') ?? '';
   const activeId = items.some((item) => item.id === selectedId)
     ? selectedId
+    : items.some((item) => item.id === requestedId)
+      ? requestedId
     : (items[0]?.id ?? '');
   const detail = useQuery({
     queryKey: ['customer-custom-request', activeId],
     queryFn: () => api.customerCustomRequest(activeId),
     enabled: Boolean(activeId && user?.role === 'customer'),
     retry: false,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
+  });
+  const requestChanges = useMutation({
+    mutationFn: (message: string) =>
+      api.requestCustomOfferChanges(activeId, message),
+    onSuccess: async (updated) => {
+      setChangeMessage('');
+      setActionError('');
+      queryClient.setQueryData(['customer-custom-request', activeId], updated);
+      await queryClient.invalidateQueries({
+        queryKey: ['customer-custom-requests'],
+      });
+    },
+  });
+  const checkout = useMutation({
+    mutationFn: () => api.checkoutCustomerCustomOffer(activeId),
+    onSuccess: (result) => {
+      window.location.assign(result.checkoutUrl);
+    },
   });
 
   useEffect(() => {
@@ -293,10 +323,82 @@ export function CustomRequestHistory() {
                         </figcaption>
                       </figure>
                     ) : null}
-                    <p>
-                      This offer is private to your account. Checkout is not
-                      available yet.
-                    </p>
+                    {detail.data.customRequestStatus === 'offer_created' &&
+                    ['available', 'reserved'].includes(
+                      detail.data.customOffer.status,
+                    ) ? (
+                      <div className="custom-request-offer-actions">
+                        <p role="status">
+                          Your private mockup is ready. Review the details above;
+                          if they look right, continue to secure payment.
+                        </p>
+                        <Button
+                          disabled={checkout.isPending}
+                          onClick={() => {
+                            setActionError('');
+                            checkout.mutate();
+                          }}
+                        >
+                          {checkout.isPending
+                            ? 'Opening secure checkout…'
+                            : 'Accept offer and pay'}
+                        </Button>
+                        <form
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            const message = changeMessage.trim();
+                            if (!message) return;
+                            setActionError('');
+                            requestChanges.mutate(message);
+                          }}
+                        >
+                          <label htmlFor="custom-offer-changes">
+                            Need an adjustment? Tell us what you would like
+                            changed.
+                          </label>
+                          <textarea
+                            id="custom-offer-changes"
+                            className="input"
+                            rows={3}
+                            maxLength={2000}
+                            value={changeMessage}
+                            onChange={(event) =>
+                              setChangeMessage(event.currentTarget.value)
+                            }
+                            placeholder="Describe the change you need…"
+                          />
+                          <Button
+                            type="submit"
+                            variant="secondary"
+                            disabled={
+                              !changeMessage.trim() || requestChanges.isPending
+                            }
+                          >
+                            {requestChanges.isPending
+                              ? 'Sending request…'
+                              : 'Request changes'}
+                          </Button>
+                        </form>
+                      </div>
+                    ) : detail.data.customRequestStatus ===
+                      'changes_requested' ? (
+                      <p role="status">
+                        Your change request has been sent to the studio. We will
+                        update this page when they respond.
+                      </p>
+                    ) : detail.data.customOffer.status === 'purchased' ? (
+                      <p role="status">This custom offer has been paid.</p>
+                    ) : null}
+                    {actionError || checkout.isError || requestChanges.isError ? (
+                      <p className="admin-operation-error" role="alert">
+                        {actionError ||
+                          (checkout.error instanceof ApiError
+                            ? checkout.error.message
+                            : requestChanges.error instanceof ApiError
+                              ? requestChanges.error.message
+                              : 'The request could not be completed. Please try again.')}
+                      </p>
+                    ) : null}
                   </section>
                 ) : null}
                 {detail.data.attachment ? (
@@ -323,9 +425,13 @@ export function CustomRequestHistory() {
                           key={response.id ?? `${response.createdAt}-${index}`}
                         >
                           <strong>
-                            {response.status === 'accepted'
-                              ? 'Request accepted'
-                              : 'Request declined'}
+                            {{
+                              under_review: 'Under review',
+                              accepted: 'Request accepted',
+                              declined: 'Request declined',
+                              offer_created: 'Private offer ready',
+                              changes_requested: 'Changes requested',
+                            }[response.status]}
                           </strong>{' '}
                           · {formatDate(response.createdAt)}
                           <span className="admin-operation-review-body">
@@ -340,6 +446,16 @@ export function CustomRequestHistory() {
                       here and contact you by email.
                     </p>
                   )}
+                  {detail.data.replies.map((reply) => (
+                    <article
+                      className="admin-operation-list-item"
+                      key={reply.id ?? reply.createdAt}
+                    >
+                      <strong>{reply.authorName}</strong>
+                      <small> · {formatDate(reply.createdAt)}</small>
+                      <p className="admin-operation-review-body">{reply.body}</p>
+                    </article>
+                  ))}
                   {detail.data.customRequestStatus === 'accepted' ? (
                     <p>
                       Your request was accepted. A custom offer has not yet been

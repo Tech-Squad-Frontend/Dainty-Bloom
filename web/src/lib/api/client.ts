@@ -22,6 +22,7 @@ import type {
   AdminNotifications,
   AdminProduct,
   AdminProductList,
+  AdminFaq,
   AdminSearchResult,
   AuthResponse,
   AuthCredentials,
@@ -643,6 +644,24 @@ export const api = {
       ),
       'request',
     ),
+  requestCustomOfferChanges: async (id: string, message: string) =>
+    unwrapObject<CustomerCustomRequest>(
+      await apiRequest<{ request: CustomerCustomRequest }>(
+        `/messages/custom-requests/${encodeURIComponent(id)}/changes`,
+        { method: 'POST', body: { message } },
+      ),
+      'request',
+    ),
+  checkoutCustomerCustomOffer: (id: string) =>
+    apiRequest<{
+      checkoutUrl: string;
+      expiresAt: string;
+      orderNumber: string;
+      totalMinor: number;
+      currency: string;
+    }>(`/messages/custom-requests/${encodeURIComponent(id)}/offer/checkout`, {
+      method: 'POST',
+    }),
   customerOrder: async (orderNumber: string) =>
     unwrapObject<CustomerOrder>(
       await apiRequest<{ order: CustomerOrder }>(
@@ -823,6 +842,30 @@ export const api = {
     if (!Array.isArray(data?.categories)) throw invalidResponseError(200);
     return normalizeAdminCategoryTree(data.categories);
   },
+  adminFaqs: () => apiRequest<{ items: AdminFaq[] }>('/admin/faqs'),
+  createAdminFaq: async (input: Omit<AdminFaq, '_id' | 'createdAt' | 'updatedAt'>) =>
+    unwrapObject<AdminFaq>(
+      await apiRequest<{ faq: AdminFaq }>('/admin/faqs', {
+        method: 'POST',
+        body: input,
+      }),
+      'faq',
+    ),
+  updateAdminFaq: async (
+    id: string,
+    input: Partial<Omit<AdminFaq, '_id' | 'createdAt' | 'updatedAt'>>,
+  ) =>
+    unwrapObject<AdminFaq>(
+      await apiRequest<{ faq: AdminFaq }>(`/admin/faqs/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: input,
+      }),
+      'faq',
+    ),
+  deleteAdminFaq: (id: string) =>
+    apiRequest<{ deleted: boolean }>(`/admin/faqs/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
   createAdminCategory: async (
     input: Omit<
       AdminCategory,

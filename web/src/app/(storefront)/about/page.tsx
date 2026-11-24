@@ -1,15 +1,16 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowRight, Palette, Sparkles } from 'lucide-react';
+import { ArrowRight, Palette } from 'lucide-react';
 import { Suspense } from 'react';
 import { AboutMediaGallery } from '@/components/about/AboutMediaGallery';
-import { ProductLineIcon } from '@/components/catalog/CatalogComponents';
-import { getPublicAboutMedia, getPublicSettings } from '@/lib/api/server';
+import { getPublicAboutMedia } from '@/lib/api/server';
 import { getCanonicalUrl } from '@/lib/siteUrl';
+import { PRODUCT_CATEGORIES } from '@/lib/productCategories';
+import { ProductLineIcon } from '@/components/catalog/CatalogComponents';
 
 const description =
-  'Discover Dainty Bloom’s custom printing collections and creative ways to make selected pieces your own.';
+  'Meet Dainty Bloom: retro-inspired home décor, plants and planters, custom-printed home accents, and playful 3D prints.';
 const canonical = getCanonicalUrl('/about');
 export const metadata: Metadata = {
   title: 'About',
@@ -26,10 +27,6 @@ export const metadata: Metadata = {
 
 export default async function AboutPage() {
   const mediaResultPromise = getPublicAboutMedia();
-  const result = await getPublicSettings();
-  const settings = result.data;
-  const productLines =
-    settings?.productLines.filter((line) => line.isActive) ?? [];
 
   return (
     <div className="commerce-page about-page">
@@ -42,11 +39,11 @@ export default async function AboutPage() {
       <section className="about-hero" aria-labelledby="about-title">
         <div className="about-hero__copy">
           <span className="eyebrow">A little about Dainty Bloom</span>
-          <h1 id="about-title">Creative prints, made personal.</h1>
+          <h1 id="about-title">Where Home Comes to Bloom</h1>
           <p>
-            Dainty Bloom brings custom printing and creative projects together.
-            Explore the current collections, find a piece to personalise where
-            supported, or tell us about a custom product you have in mind.
+            We bring retro dopamine décor together with plants and planters,
+            custom-printed home accents, and playful 3D prints. Explore the
+            collections or tell us about a custom piece you have in mind.
           </p>
           <div className="button-row">
             <Link className="button button--primary button--lg" href="/shop">
@@ -56,7 +53,7 @@ export default async function AboutPage() {
               className="button button--secondary button--lg"
               href="/custom-3d-request"
             >
-              Request a custom product
+              Request a custom 3D print
             </Link>
           </div>
         </div>
@@ -71,8 +68,8 @@ export default async function AboutPage() {
           />
           <div className="about-hero__art">
             <Image
-              src="/images/dainty-bloom-logo.png"
-              alt="Dainty Bloom floral monogram"
+              src="/images/new-logo.png"
+              alt="Dainty Bloom orange and blue floral monogram"
               width={640}
               height={426}
               sizes="(max-width: 600px) 72vw, (max-width: 900px) 40vw, 352px"
@@ -80,18 +77,10 @@ export default async function AboutPage() {
             />
           </div>
           <span className="about-hero__caption">
-            <Sparkles size={16} aria-hidden="true" />
-            Made to add a personal touch
+            Where Home Comes to Bloom
           </span>
         </div>
       </section>
-
-      {result.unavailable ? (
-        <p className="about-data-note" role="status">
-          Store details are temporarily unavailable. You can still explore the
-          shop and its current product information.
-        </p>
-      ) : null}
 
       <section className="about-story" aria-labelledby="about-story-title">
         <div className="about-story__icon" aria-hidden="true">
@@ -99,10 +88,12 @@ export default async function AboutPage() {
         </div>
         <div>
           <span className="eyebrow">Our approach</span>
-          <h2 id="about-story-title">A space for thoughtful, creative finds</h2>
+          <h2 id="about-story-title">Playful pieces with personality</h2>
           <p>
-            {settings?.aboutNote ||
-              'Dainty Bloom is a custom printing store with a mix of printed products and creative projects. The collection and product pages share the options available for each item, so you can choose what suits your idea.'}
+            Dainty Bloom is a home and lifestyle brand for people who love color,
+            character, and a little retro dopamine. From plants and planters to
+            custom-printed cushions and 3D-printed décor, each collection is
+            chosen to make everyday spaces feel more personal.
           </p>
         </div>
       </section>
@@ -117,37 +108,22 @@ export default async function AboutPage() {
       >
         <header className="about-section-heading">
           <span className="eyebrow">Explore the collections</span>
-          <h2 id="about-offerings-title">What you’ll find</h2>
+          <h2 id="about-offerings-title">3D-printed home décor</h2>
           <p>
-            The available collections and descriptions are managed by the Dainty
-            Bloom team.
+            Our main collection includes printed pieces for homes, plants, pets,
+            and thoughtful gifts.
           </p>
         </header>
-        {productLines.length ? (
-          <ul className="about-offerings__grid">
-            {productLines.map((line) => (
-              <li className="about-offering-card" key={line.key}>
-                <span className="about-offering-card__icon" aria-hidden="true">
-                  <ProductLineIcon value={`${line.key} ${line.label}`} />
-                </span>
-                <h3>{line.label}</h3>
-                <p>{line.description}</p>
-                <Link className="text-link" href="/shop">
-                  Browse the shop <ArrowRight size={16} aria-hidden="true" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p
-            className="about-data-note"
-            role={result.unavailable ? 'status' : 'note'}
-          >
-            {result.unavailable
-              ? 'The current collections could not be loaded.'
-              : 'Browse the shop to see the products currently available.'}
-          </p>
-        )}
+        <ul className="about-offerings__grid">
+          {PRODUCT_CATEGORIES.map(({ name, slug }) => (
+            <li className="about-offering-card" key={slug}>
+              <span className="about-offering-card__icon" aria-hidden="true"><ProductLineIcon value={name} /></span>
+              <h3>{name}</h3>
+              <p>Designed as a colorful, made-to-order 3D-printed home piece.</p>
+              <Link className="text-link" href={`/category/${slug}`}>Explore collection <ArrowRight size={16} aria-hidden="true" /></Link>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section
@@ -157,18 +133,35 @@ export default async function AboutPage() {
         <div>
           <span className="eyebrow">Your creative journey</span>
           <h2 id="about-experience-title">
-            Choose the details that feel right
+            Custom prints beyond the 3D collection
           </h2>
           <p>
-            Product pages explain the options available for each piece. Selected
-            products support customer artwork uploads, while paint-it-yourself
-            canvases are designed by the studio and do not require customer
-            artwork.
+            Alongside our ready-to-order 3D-printed home pieces, we take custom
+            requests for printed T-shirts, mugs, tote bags, phone cases, and
+            canvases. Choose a paint-it-yourself canvas with a design to colour,
+            or ask about our dimensional canvas artwork built from layered
+            filament mesh. These items are made to request, so share your idea
+            or artwork and we will check the design and what is possible before
+            sending a quote. We only begin after you have reviewed the details.
           </p>
+          <p>
+            Requests can follow seasonal and pop-culture themes such as Autumn,
+            Halloween, Christmas, and Anime, or a theme of your own. Final
+            details, availability, and price are confirmed with you first.
+          </p>
+          <ul className="about-experience__items" aria-label="Custom print options">
+            {[
+              'T-shirt prints',
+              'Mugs',
+              'Tote bags',
+              'Phone cases',
+              'Paint-it-yourself canvases',
+              'Textured filament-mesh canvases',
+            ].map((item) => <li key={item}>{item}</li>)}
+          </ul>
         </div>
-        <Link className="text-link" href="/faq">
-          Read frequently asked questions{' '}
-          <ArrowRight size={16} aria-hidden="true" />
+        <Link className="button button--primary" href="/custom-3d-request">
+          Send a custom request <ArrowRight size={16} aria-hidden="true" />
         </Link>
       </section>
 

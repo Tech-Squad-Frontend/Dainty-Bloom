@@ -14,7 +14,9 @@ import {
 import type { IUser } from '../models/User';
 import { AppError } from '../utils/AppError';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
 import { startOrderCheckout } from './payment/paymentFlow.service';
+import { sendSafely } from './email.service';
 import { logAuditEvent } from './audit.service';
 import {
   deleteArtwork,
@@ -527,7 +529,7 @@ export async function createCustomOfferForRequest(
   const request = await Message.findOne({
     _id: requestId,
     type: 'custom_3d_request',
-  }).select('customerId customRequestStatus');
+  }).select('customerId customRequestStatus subject');
   if (!request) throw customRequestNotFound();
   if (await CustomOffer.exists({ request: request._id })) {
     throw customOfferAlreadyExists();
@@ -551,7 +553,7 @@ export async function createCustomOfferForRequest(
       _id: request.customerId,
       role: 'customer',
       accountState: 'active',
-    }).select('_id role'),
+    }).select('_id role name email emailVerified'),
     Category.findOne({ _id: input.categoryId, isActive: true }).select('_id'),
   ]);
   if (!customer) {
@@ -678,6 +680,33 @@ export async function createCustomOfferForRequest(
     }
     requestTransitioned = true;
 
+    const reviewUrl = new URL(
+      `/account/custom-requests?request=${encodeURIComponent(request._id.toString())}`,
+      env.CLIENT_URL,
+    ).toString();
+    const offerMessage = `Your private mockup and offer are ready to review. Sign in to view the design, confirm the agreed details, and pay securely if you are happy. If you would like changes, send us a note from the same request page.`;
+    const emailSent = customer.emailVerified
+      ? await sendSafely({
+          to: customer.email,
+          subject: 'Your Dainty Bloom custom mockup is ready',
+          text: `${offerMessage}\n\nReview your offer: ${reviewUrl}`,
+          html: `<p>${offerMessage}</p><p><a href="${escapeHtml(reviewUrl)}">Review your private offer</a></p>`,
+        })
+      : false;
+    transitioned.customRequestResponses.push({
+      status: 'offer_created',
+      message: offerMessage,
+      author: actor._id,
+      notificationStatus: customer.emailVerified
+        ? emailSent
+          ? 'sent'
+          : 'failed'
+        : 'not_verified',
+      createdAt: new Date(),
+    });
+    transitioned.status = 'new';
+    await transitioned.save();
+
     const result = await getAdminCustomOfferForRequest(requestId);
     if (!result) {
       throw new AppError(
@@ -750,6 +779,178 @@ export async function createCustomOfferForRequest(
         409,
         'CUSTOM_REQUEST_TRANSITION_INVALID',
       );
+    }
+    throw error;
+  }
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    return entities[character];
+  });
+}
+
+/** Replaces an available private offer after the customer asks for changes. */
+export async function reviseCustomOfferForRequest(
+  requestId: string,
+  input: CreateCustomOfferInput,
+  file: UploadedArtworkFile | undefined,
+  actor: IUser,
+): Promise<CustomOfferSummary> {
+  if (actor.role !== 'admin') {
+    throw new AppError('Admin role required', 403, 'FORBIDDEN');
+  }
+  if (!file) throw new AppError('A revised mockup image is required', 400, 'NO_FILE');
+  if (!mongoose.isValidObjectId(requestId) || !Types.ObjectId.isValid(input.categoryId)) {
+    throw customRequestNotFound();
+  }
+  if (input.expiresAt <= new Date() || !ALL_PRODUCT_TYPES.includes(input.productType)) {
+    throw new AppError('Offer details are invalid', 400, 'CUSTOM_OFFER_INVALID');
+  }
+  const request = await Message.findOne({
+    _id: requestId,
+    type: 'custom_3d_request',
+    customRequestStatus: 'changes_requested',
+  }).select('customerId subject');
+  const offer = await CustomOffer.findOne({ request: requestId });
+  if (!request || !offer || offer.status !== 'available' || offer.order) {
+    throw new AppError('Only an unreserved offer can be revised', 409, 'CUSTOM_OFFER_NOT_EDITABLE');
+  }
+  const [customer, category, currentProduct] = await Promise.all([
+    User.findOne({ _id: request.customerId, role: 'customer', accountState: 'active' })
+      .select('_id name email emailVerified'),
+    Category.findOne({ _id: input.categoryId, isActive: true }).select('_id'),
+    Product.findOne({ _id: offer.product, visibility: 'private' }).select('_id'),
+  ]);
+  if (!customer || !category || !currentProduct) {
+    throw new AppError('The customer, category, or private product is unavailable', 409, 'CUSTOM_OFFER_INTEGRITY_ERROR');
+  }
+
+  const specifications = [
+    { label: 'Size and dimensions', value: input.size },
+    ...(input.colours ? [{ label: 'Colours', value: input.colours }] : []),
+    ...(input.materials ? [{ label: 'Materials', value: input.materials }] : []),
+    ...(input.personalisation ? [{ label: 'Personalisation', value: input.personalisation }] : []),
+    ...(input.additionalInstructions ? [{ label: 'Additional instructions', value: input.additionalInstructions }] : []),
+  ];
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
+  const product = await Product.create({
+    title: input.title,
+    slug: `custom-offer-revision-${request._id.toString()}-${suffix}`,
+    description: input.description,
+    category: category._id,
+    productType: input.productType,
+    media: [],
+    sku: `CUSTOM-REV-${suffix}`.toUpperCase(),
+    basePriceMinor: input.agreedPriceMinor,
+    currency: input.currency,
+    optionGroups: [],
+    quantityPricing: [],
+    printTechniques: [],
+    specifications,
+    artworkRequirements: { allowedFormats: [] },
+    artworkRequired: false,
+    stock: { trackInventory: false, quantity: 0, lowStockThreshold: 0, allowBackorder: false, reserveBlanksForMadeToOrder: false },
+    status: 'active',
+    visibility: 'private',
+    seo: {},
+    viewCount: 0,
+    soldCount: 0,
+    ratingAverage: 0,
+    ratingCount: 0,
+    isFeatured: false,
+    minOrderQuantity: 1,
+    maxOrderQuantity: 1,
+  });
+
+  let artworkId: string | undefined;
+  let replaced = false;
+  try {
+    const artwork = await saveArtworkUpload({ user: customer }, file, true);
+    artworkId = artwork.id;
+    const linked = await ArtworkAsset.updateOne(
+      { _id: artworkId, owner: customer._id, customOffer: { $exists: false } },
+      { $set: { customOffer: offer._id } },
+    );
+    if (linked.matchedCount !== 1) {
+      throw new AppError('The revised mockup could not be linked', 409, 'CUSTOM_OFFER_IMAGE_LINK_FAILED');
+    }
+    const updated = await CustomOffer.findOneAndUpdate(
+      { _id: offer._id, status: 'available', order: { $exists: false } },
+      {
+        $set: {
+          product: product._id,
+          image: new Types.ObjectId(artworkId),
+          agreedPriceMinor: input.agreedPriceMinor,
+          currency: input.currency,
+          agreedQuantity: input.agreedQuantity,
+          specifications,
+          expiresAt: input.expiresAt,
+        },
+      },
+      { new: true, runValidators: true, overwriteImmutable: true },
+    );
+    if (!updated) throw new AppError('The offer changed before the revision could be saved', 409, 'CUSTOM_OFFER_NOT_EDITABLE');
+    replaced = true;
+    const latestRequest = await Message.findOne({
+      _id: request._id,
+      customRequestStatus: 'changes_requested',
+    });
+    if (!latestRequest) throw new AppError('The request changed before the revision was sent', 409, 'CUSTOM_REQUEST_TRANSITION_INVALID');
+    latestRequest.customRequestStatus = 'offer_created';
+    latestRequest.status = 'quoted';
+    const reviewUrl = new URL(
+      `/account/custom-requests?request=${encodeURIComponent(request._id.toString())}`,
+      env.CLIENT_URL,
+    ).toString();
+    const updateMessage = 'The studio has updated your private mockup and offer. Review the new design and agreed details; you can pay securely if you are happy, or request another change.';
+    const emailSent = customer.emailVerified
+      ? await sendSafely({
+          to: customer.email,
+          subject: 'Your revised Dainty Bloom custom offer is ready',
+          text: `${updateMessage}\n\nReview your offer: ${reviewUrl}`,
+          html: `<p>${updateMessage}</p><p><a href="${escapeHtml(reviewUrl)}">Review your revised offer</a></p>`,
+        })
+      : false;
+    latestRequest.customRequestResponses.push({
+      status: 'offer_created',
+      message: updateMessage,
+      author: actor._id,
+      notificationStatus: customer.emailVerified ? (emailSent ? 'sent' : 'failed') : 'not_verified',
+      createdAt: new Date(),
+    });
+    await latestRequest.save();
+    const result = await getAdminCustomOfferForRequest(requestId);
+    if (!result) throw new AppError('The revised offer could not be loaded', 500, 'CUSTOM_OFFER_READ_FAILED');
+
+    await ArtworkAsset.updateOne(
+      { _id: offer.image, customOffer: offer._id },
+      { $unset: { customOffer: 1 } },
+    );
+    if (offer.image) await deleteArtwork(offer.image.toString(), { user: customer });
+    await Product.deleteOne({ _id: currentProduct._id });
+    await logAuditEvent({
+      actor,
+      action: 'custom_offer.revised',
+      targetType: 'CustomOffer',
+      targetId: offer._id.toString(),
+      metadata: { requestId, productId: product._id.toString() },
+    });
+    return result;
+  } catch (error) {
+    if (!replaced) {
+      await Product.deleteOne({ _id: product._id });
+      if (artworkId) {
+        await ArtworkAsset.updateOne({ _id: artworkId, customOffer: offer._id }, { $unset: { customOffer: 1 } });
+        await deleteArtwork(artworkId, { user: customer });
+      }
     }
     throw error;
   }

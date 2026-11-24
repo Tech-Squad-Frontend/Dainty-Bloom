@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import type { CartView, CatalogCard, CatalogPage, Category, CustomerOrder, PublicProduct } from '@/lib/api/types';
+import { PRODUCT_CATEGORIES } from '@/lib/productCategories';
 import { UiPreview } from './ui-preview';
 
 export const dynamic = 'force-dynamic';
@@ -11,12 +12,12 @@ export const metadata: Metadata = {
 };
 
 const sampleImage = {
-  url: '/images/dainty-bloom-logo.png',
+  url: '/images/new-logo.png',
   alt: 'Preview image for Dainty Bloom sample product',
   variants: {
-    thumb: '/images/dainty-bloom-logo.png',
-    medium: '/images/dainty-bloom-logo.png',
-    large: '/images/dainty-bloom-logo.png',
+    thumb: '/images/new-logo.png',
+    medium: '/images/new-logo.png',
+    large: '/images/new-logo.png',
   },
 };
 
@@ -26,7 +27,7 @@ const sampleProducts: CatalogCard[] = [
     title: 'Sample product — standard',
     slug: 'preview-standard',
     primaryImage: null,
-    category: { id: '3d-printed-goods', name: '3D Printed Goods', slug: '3d-printed-goods' },
+    category: { id: 'flower-coasters', name: 'Flower Coasters', slug: 'flower-coasters' },
     productType: 'three_d_printed',
     startingPriceMinor: 1850,
     currency: 'GBP',
@@ -39,8 +40,8 @@ const sampleProducts: CatalogCard[] = [
     title: 'Sample product — sale with compare-at price',
     slug: 'preview-sale',
     primaryImage: sampleImage,
-    category: { id: 'mugs', name: 'Mugs', slug: 'mugs' },
-    productType: 'mug',
+    category: { id: 'vases-and-planters', name: 'Vases and Planters', slug: 'vases-and-planters' },
+    productType: 'three_d_printed',
     startingPriceMinor: 1200,
     compareAtPriceMinor: 1600,
     currency: 'GBP',
@@ -53,7 +54,7 @@ const sampleProducts: CatalogCard[] = [
     title: 'Sample product — made to order',
     slug: 'preview-made-to-order',
     primaryImage: null,
-    category: { id: '3d-printed-goods', name: '3D Printed Goods', slug: '3d-printed-goods' },
+    category: { id: 'lamps-and-lighting', name: 'Lamps and Lighting', slug: 'lamps-and-lighting' },
     productType: 'three_d_printed',
     startingPriceMinor: 2400,
     currency: 'GBP',
@@ -67,8 +68,8 @@ const sampleProducts: CatalogCard[] = [
     title: 'Sample product — low stock',
     slug: 'preview-low-stock',
     primaryImage: null,
-    category: { id: 't-shirts', name: 'T-Shirts', slug: 't-shirts' },
-    productType: 'tshirt',
+    category: { id: 'pet-bowl-stands', name: 'Pet Bowl Stands', slug: 'pet-bowl-stands' },
+    productType: 'three_d_printed',
     startingPriceMinor: 2250,
     currency: 'GBP',
     availability: 'low_stock',
@@ -80,8 +81,8 @@ const sampleProducts: CatalogCard[] = [
     title: 'Sample product — out of stock',
     slug: 'preview-out-of-stock',
     primaryImage: null,
-    category: { id: 'canvas', name: 'Canvas', slug: 'paint-it-yourself-canvas' },
-    productType: 'canvas_paint_yourself',
+    category: { id: 'seasonal-decorations', name: 'Seasonal Decorations', slug: 'seasonal-decorations' },
+    productType: 'three_d_printed',
     startingPriceMinor: 1900,
     currency: 'GBP',
     availability: 'out_of_stock',
@@ -93,8 +94,8 @@ const sampleProducts: CatalogCard[] = [
     title: 'Sample product — rating and eco note',
     slug: 'preview-rating-eco',
     primaryImage: null,
-    category: { id: 't-shirts', name: 'T-Shirts', slug: 't-shirts' },
-    productType: 'tshirt',
+    category: { id: 'wine-and-glass-racks', name: 'Wine and Glass Racks', slug: 'wine-and-glass-racks' },
+    productType: 'three_d_printed',
     startingPriceMinor: 2800,
     currency: 'GBP',
     availability: 'in_stock',
@@ -109,8 +110,8 @@ const sampleProducts: CatalogCard[] = [
     title: 'Sample product — with image',
     slug: 'preview-image',
     primaryImage: sampleImage,
-    category: { id: 'mugs', name: 'Mugs', slug: 'mugs' },
-    productType: 'mug',
+    category: { id: 'side-tables', name: 'Side Tables', slug: 'side-tables' },
+    productType: 'three_d_printed',
     startingPriceMinor: 1450,
     currency: 'GBP',
     availability: 'in_stock',
@@ -132,22 +133,16 @@ const sampleProducts: CatalogCard[] = [
   },
 ];
 
-const sampleCategories: Category[] = [
-  {
-    _id: '3d-printed-goods',
-    name: '3D Printed Goods',
-    slug: '3d-printed-goods',
-    sortOrder: 1,
-    productCount: 3,
-    children: [
-      { _id: 'toys', name: 'Toys', slug: 'toys', sortOrder: 1, productCount: 0, children: [] },
-      { _id: 'home-decor', name: 'Home Decor', slug: 'home-decor', sortOrder: 2, productCount: 2, children: [] },
-    ],
-  },
-  { _id: 'mugs', name: 'Mugs', slug: 'mugs', sortOrder: 2, productCount: 0, children: [] },
-  { _id: 't-shirts', name: 'T-Shirts', slug: 't-shirts', sortOrder: 3, productCount: 1, children: [] },
-  { _id: 'canvas', name: 'Paint-It-Yourself Canvas', slug: 'paint-it-yourself-canvas', sortOrder: 4, productCount: 0, children: [] },
-];
+const sampleCategories: Category[] = PRODUCT_CATEGORIES.map(
+  ({ name, slug }, sortOrder) => ({
+    _id: slug,
+    name,
+    slug,
+    sortOrder,
+    productCount: sortOrder === 0 ? 1 : 0,
+    children: [],
+  }),
+);
 
 const sampleCatalog: CatalogPage = {
   items: sampleProducts,
@@ -155,7 +150,7 @@ const sampleCatalog: CatalogPage = {
   facets: {
     minPrice: 990,
     maxPrice: 2800,
-    productTypes: ['three_d_printed', 'mug', 'tshirt'],
+    productTypes: ['three_d_printed'],
     printTechniques: ['sublimation'],
     colors: [
       { value: 'lavender', label: 'Lavender', hex: '#9D8DF1' },
@@ -221,8 +216,8 @@ const sampleProduct: PublicProduct = {
   minOrderQuantity: 1,
   maxOrderQuantity: 20,
   seo: {},
-  category: { id: 'mugs', name: 'Mugs', slug: 'mugs' },
-  breadcrumb: [{ id: 'mugs', name: 'Mugs', slug: 'mugs' }],
+  category: { id: 'vases-and-planters', name: 'Vases and Planters', slug: 'vases-and-planters' },
+  breadcrumb: [{ id: 'vases-and-planters', name: 'Vases and Planters', slug: 'vases-and-planters' }],
   relatedProducts: [],
   reviewSummary: { average: null, count: 0, distribution: {} },
 };

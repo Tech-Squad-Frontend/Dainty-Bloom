@@ -10,6 +10,7 @@ import { useForm, useWatch, type FieldErrors } from 'react-hook-form';
 import {
   Archive,
   ArrowLeft,
+  ArrowRight,
   Check,
   ChevronDown,
   CircleAlert,
@@ -407,6 +408,19 @@ type ProductEditorSection =
   | 'images'
   | 'search';
 
+const PRODUCT_EDITOR_STEPS: Array<{
+  id: ProductEditorSection;
+  title: string;
+}> = [
+  { id: 'details', title: 'Product details' },
+  { id: 'pricing', title: 'Pricing' },
+  { id: 'options', title: 'Options' },
+  { id: 'production', title: 'Production' },
+  { id: 'inventory', title: 'Inventory' },
+  { id: 'images', title: 'Images' },
+  { id: 'search', title: 'Search appearance' },
+];
+
 const sectionByField: Partial<
   Record<keyof ProductFormValues, ProductEditorSection>
 > = {
@@ -515,6 +529,10 @@ export function ProductEditor({ productId }: { productId?: string }) {
   const hydratedProductId = useRef<string | null>(null);
   const [openSections, setOpenSections] = useState<Set<ProductEditorSection>>(
     () => new Set(['details']),
+  );
+  const activeStepIndex = Math.max(
+    0,
+    PRODUCT_EDITOR_STEPS.findIndex((step) => openSections.has(step.id)),
   );
 
   function updatePending(
@@ -636,7 +654,7 @@ export function ProductEditor({ productId }: { productId?: string }) {
   useEffect(() => {
     if (window.location.hash !== '#images') return;
     const frame = window.requestAnimationFrame(() =>
-      setOpenSections((current) => new Set(current).add('images')),
+      setOpenSections(new Set(['images'])),
     );
     return () => window.cancelAnimationFrame(frame);
   }, []);
@@ -1151,7 +1169,7 @@ export function ProductEditor({ productId }: { productId?: string }) {
         if (!product) return;
         productIdToSave = product._id;
         createdDuringSave = true;
-      } else if (isDirty) {
+      } else {
         product = await api.updateAdminProduct(
           productIdToSave,
           omitMedia(productPayload(valuesToSave, valuesToSave.status)),
@@ -1184,7 +1202,7 @@ export function ProductEditor({ productId }: { productId?: string }) {
         `Product details saved successfully.${createdDuringSave && pendingRef.current.length ? ` Uploading ${pendingRef.current.length} pending image${pendingRef.current.length === 1 ? '' : 's'}…` : ''}`,
       );
       toast('Product details saved.', 'success');
-      if (createdDuringSave) {
+      if (pendingRef.current.length) {
         await queuePendingUploads(pendingRef.current.map((image) => image.key));
       }
       const savedImageCount = (getValues('media') ?? []).length;
@@ -1197,6 +1215,9 @@ export function ProductEditor({ productId }: { productId?: string }) {
         setSaveNotice(
           `Product details saved. ${savedImageCount} image${savedImageCount === 1 ? '' : 's'} saved.`,
         );
+      }
+      if (!createdDuringSave && remainingImageCount === 0) {
+        router.replace('/admin/products');
       }
     } catch (error) {
       if (error instanceof ApiError && error.code === 'SKU_ALREADY_EXISTS') {
@@ -1942,12 +1963,18 @@ export function ProductEditor({ productId }: { productId?: string }) {
   }
 
   function toggleSection(section: ProductEditorSection) {
-    setOpenSections((current) => {
-      const next = new Set(current);
-      if (next.has(section)) next.delete(section);
-      else next.add(section);
-      return next;
-    });
+    setOpenSections(new Set([section]));
+  }
+
+  function navigateEditorStep(index: number) {
+    const step = PRODUCT_EDITOR_STEPS[index];
+    if (!step) return;
+    setOpenSections(new Set([step.id]));
+    window.requestAnimationFrame(() =>
+      document
+        .getElementById(step.id)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
   }
 
   function submitForm(event: React.FormEvent<HTMLFormElement>) {
@@ -1994,6 +2021,7 @@ export function ProductEditor({ productId }: { productId?: string }) {
     <form
       ref={formElementRef}
       className="admin-product-editor"
+      data-product-wizard="true"
       onSubmit={submitForm}
       noValidate
     >
@@ -2024,6 +2052,46 @@ export function ProductEditor({ productId }: { productId?: string }) {
           {saveNotice}
         </div>
       ) : null}
+      <nav className="admin-product-step-nav" aria-label="Product editor steps">
+        <div className="admin-product-step-nav__progress">
+          <span>
+            Step {activeStepIndex + 1} of {PRODUCT_EDITOR_STEPS.length}
+          </span>
+          <strong>{PRODUCT_EDITOR_STEPS[activeStepIndex]?.title}</strong>
+          <div
+            className="admin-product-step-nav__track"
+            role="progressbar"
+            aria-label="Product information progress"
+            aria-valuemin={1}
+            aria-valuemax={PRODUCT_EDITOR_STEPS.length}
+            aria-valuenow={activeStepIndex + 1}
+          >
+            <span
+              style={{
+                width: `${((activeStepIndex + 1) / PRODUCT_EDITOR_STEPS.length) * 100}%`,
+              }}
+            />
+          </div>
+        </div>
+        <div className="admin-product-step-nav__actions">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={activeStepIndex === 0}
+            onClick={() => navigateEditorStep(activeStepIndex - 1)}
+          >
+            <ArrowLeft size={15} aria-hidden="true" /> Previous
+          </Button>
+          {activeStepIndex < PRODUCT_EDITOR_STEPS.length - 1 ? (
+            <Button
+              type="button"
+              onClick={() => navigateEditorStep(activeStepIndex + 1)}
+            >
+              Next section <ArrowRight size={15} aria-hidden="true" />
+            </Button>
+          ) : null}
+        </div>
+      </nav>
       <div className="admin-editor-columns">
         <div className="admin-editor-main">
           <EditorSection

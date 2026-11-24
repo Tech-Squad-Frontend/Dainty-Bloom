@@ -51,9 +51,13 @@ const requestSchema = z
         '',
         'Custom 3D print or figurine',
         'Paint-it-yourself canvas or custom artwork',
+        'T-shirt print',
         'Personalised clothing',
         'Mug or drinkware',
+        'Tote bag print',
         'Phone case',
+        'Textured filament-mesh canvas artwork',
+        'Other custom print design',
         'Other personalised or custom product',
         'Other',
       ],
@@ -206,8 +210,12 @@ function formatFileLimit(bytes: number): string {
 
 export function CustomProductRequestForm({
   maxUploadBytes,
+  defaultRequestTitle = '',
+  defaultProductType = 'Custom 3D print or figurine',
 }: {
   maxUploadBytes: number | null;
+  defaultRequestTitle?: string;
+  defaultProductType?: RequestValues['productType'];
 }) {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
@@ -234,9 +242,9 @@ export function CustomProductRequestForm({
       name: '',
       email: '',
       phone: '',
-      productType: '',
+      productType: defaultProductType,
       otherProductType: '',
-      productName: '',
+      productName: defaultRequestTitle,
       description: '',
       approximateSize: '',
       preferredColour: '',
@@ -488,96 +496,45 @@ export function CustomProductRequestForm({
           />
         </div>
 
-        <Input
-          label="Name (required)"
-          autoComplete="name"
-          maxLength={120}
-          required
-          readOnly
-          error={errors.name?.message}
-          {...register('name')}
-        />
-        <Input
-          label="Email address (required)"
-          type="email"
-          autoComplete="email"
-          maxLength={254}
-          required
-          readOnly
-          error={errors.email?.message}
-          {...register('email')}
-        />
-        <Input
-          label="Phone or preferred contact number (optional)"
-          type="tel"
-          autoComplete="tel"
-          maxLength={40}
-          error={errors.phone?.message}
-          {...register('phone')}
-        />
-        <Select
-          label="Product type (required)"
-          required
-          error={errors.productType?.message}
-          {...register('productType')}
-        >
-          <option value="">Choose a product type</option>
-          <option value="Custom 3D print or figurine">
-            Custom 3D print or figurine
-          </option>
-          <option value="Paint-it-yourself canvas or custom artwork">
-            Paint-it-yourself canvas or custom artwork
-          </option>
-          <option value="Personalised clothing">Personalised clothing</option>
-          <option value="Mug or drinkware">Mug or drinkware</option>
-          <option value="Phone case">Phone case</option>
-          <option value="Other personalised or custom product">
-            Other personalised or custom product
-          </option>
-          <option value="Other">Other</option>
-        </Select>
-        {productType === 'Other' ? (
-          <Input
-            label="What kind of product? (required)"
-            maxLength={120}
-            required
-            error={errors.otherProductType?.message}
-            {...register('otherProductType')}
-          />
-        ) : null}
-        <Input
-          label="Product name or short request title (required)"
-          maxLength={160}
-          required
-          error={errors.productName?.message}
-          {...register('productName')}
-        />
-        <div className="custom-3d-form__description">
-          <Textarea
-            id="custom-3d-description"
-            label="What would you like us to make? (required)"
-            required
-            maxLength={2000}
-            rows={7}
-            error={errors.description?.message}
-            aria-describedby={
-              errors.description
-                ? 'custom-3d-description-hint custom-3d-description-count custom-3d-description-error'
-                : 'custom-3d-description-hint custom-3d-description-count'
-            }
-            {...register('description')}
-          />
-          <p id="custom-3d-description-hint" className="field-hint">
-            Describe the item, how you would use it, and any important details.
-            If your image is only a reference, explain what you want to be
-            different. A finished design is not required. Avoid HTML.
-          </p>
-          <p id="custom-3d-description-count" className="custom-3d-form__count">
-            {description.trim().length}/2,000 characters (minimum 20)
-          </p>
-        </div>
+        <section className="custom-3d-form__section" aria-labelledby="custom-request-contact-title">
+          <div className="custom-3d-form__section-heading">
+            <span>01</span><div><h3 id="custom-request-contact-title">Your contact details</h3><p>We’ll use these to reply about your request.</p></div>
+          </div>
+          <div className="custom-3d-form__contact">
+            <Input label="Name (required)" autoComplete="name" maxLength={120} required readOnly error={errors.name?.message} {...register('name')} />
+            <Input label="Email address (required)" type="email" autoComplete="email" maxLength={254} required readOnly error={errors.email?.message} {...register('email')} />
+          </div>
+        </section>
 
-        <div className="custom-3d-form__details">
+        <section className="custom-3d-form__section" aria-labelledby="custom-request-idea-title">
+          <div className="custom-3d-form__section-heading">
+            <span>02</span><div><h3 id="custom-request-idea-title">Your product idea</h3><p>Choose an item, give it a short name, and tell us the details.</p></div>
+          </div>
+          <Select label="What would you like made? (required)" required error={errors.productType?.message} {...register('productType')}>
+            <option value="">Choose a product type</option>
+            <option value="Custom 3D print or figurine">Custom 3D print or figurine</option>
+            <option value="T-shirt print">Printed T-shirt</option>
+            <option value="Mug or drinkware">Printed mug or drinkware</option>
+            <option value="Tote bag print">Printed tote bag</option>
+            <option value="Phone case">Printed phone case</option>
+            <option value="Paint-it-yourself canvas or custom artwork">Paint-it-yourself canvas</option>
+            <option value="Textured filament-mesh canvas artwork">Dimensional filament-mesh canvas</option>
+            <option value="Other custom print design">Another custom print design</option>
+            <option value="Other personalised or custom product">Other personalised product</option>
+            <option value="Other">Something else</option>
+          </Select>
+          {productType === 'Other' ? <Input label="What kind of product? (required)" maxLength={120} required error={errors.otherProductType?.message} {...register('otherProductType')} /> : null}
+          <Input label="Request name (required)" hint="A short label, for example “Autumn tote bag” or “Custom anime mug”." maxLength={160} required error={errors.productName?.message} {...register('productName')} />
+          <div className="custom-3d-form__description">
+            <Textarea id="custom-3d-description" label="Describe your idea (required)" required maxLength={2000} rows={5} error={errors.description?.message} aria-describedby={errors.description ? 'custom-3d-description-hint custom-3d-description-count custom-3d-description-error' : 'custom-3d-description-hint custom-3d-description-count'} {...register('description')} />
+            <p id="custom-3d-description-hint" className="field-hint">Include the theme (for example Autumn, Halloween, Christmas, Anime, or your own), colours, text, and any design details. For canvases, say whether you want a paint-it-yourself design or dimensional filament-mesh artwork. A finished design is not required.</p>
+            <p id="custom-3d-description-count" className="custom-3d-form__count">{description.trim().length}/2,000 characters (minimum 20)</p>
+          </div>
+        </section>
+
+        <details className="custom-3d-form__optional">
+          <summary><span><strong>Add preferences (optional)</strong><small>Size, colour, material, quantity, budget, or deadline</small></span><span aria-hidden="true">+</span></summary>
+          <div className="custom-3d-form__details">
           <Input
             label="Desired size or dimensions"
             maxLength={200}
@@ -619,9 +576,15 @@ export function CustomProductRequestForm({
             error={errors.neededByDate?.message}
             {...register('neededByDate')}
           />
-        </div>
+          <Input label="Phone or preferred contact number" type="tel" autoComplete="tel" maxLength={40} error={errors.phone?.message} {...register('phone')} />
+          </div>
+        </details>
 
-        <div className="custom-3d-form__upload">
+        <section className="custom-3d-form__section" aria-labelledby="custom-request-image-title">
+          <div className="custom-3d-form__section-heading">
+            <span>03</span><div><h3 id="custom-request-image-title">Add a design or reference</h3><p>Optional. You can also describe your idea without an image.</p></div>
+          </div>
+          <div className="custom-3d-form__upload">
           <Select
             label="How should we use your image?"
             error={errors.imagePurpose?.message}
@@ -682,7 +645,8 @@ export function CustomProductRequestForm({
             file is checked again by the server; its filename and
             browser-reported type are not used as proof of image content.
           </p>
-        </div>
+          </div>
+        </section>
 
         <Button
           type="submit"

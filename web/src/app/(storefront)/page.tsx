@@ -14,7 +14,6 @@ import {
   ErrorStateCatalog,
   ProductCard,
   ProductGrid,
-  ProductLineIcon,
 } from '@/components/catalog/CatalogComponents';
 import {
   getPublicCatalog,
@@ -28,23 +27,18 @@ import { PRODUCT_THEMES } from '@/lib/productThemes';
 import type { CatalogCard, Category } from '@/lib/api/types';
 import { getCanonicalUrl } from '@/lib/siteUrl';
 import { getProductImageAlt } from '@/lib/productImageAlt';
+import { PRODUCT_CATEGORIES } from '@/lib/productCategories';
 
 export const revalidate = 60;
 const canonical = getCanonicalUrl('/');
-const FEATURED_CATEGORY_SLUGS = [
-  't-shirts',
-  'mugs',
-  'paint-it-yourself-canvas',
-  'toys',
-  'home-decor',
-  'lamps-and-lighting',
-] as const;
 const HOME_RAIL_PRODUCT_LIMIT = 4;
 const THEME_PREVIEW_LIMIT = 1;
+const CATEGORY_PRODUCT_LIMIT = 48;
+const categoryImageSelectionSeed = Math.random();
 
-const homeTitle = 'Custom Printing & Personalised Gifts';
+const homeTitle = 'Custom 3D Prints & Retro Dopamine Décor';
 const homeDescription =
-  'Create something personal with custom-printed clothing, gifts and homeware from Dainty Bloom. Explore products made to your specifications.';
+  'Discover custom 3D prints for your home, playful retro décor, plants and planters, and personalized home accents from Dainty Bloom.';
 
 export const metadata: Metadata = {
   title: homeTitle,
@@ -98,7 +92,7 @@ export default async function HomePage() {
     faqResult,
     themeResults,
     threeDResult,
-    canvasResult,
+    categoryProductResults,
   ] = await Promise.all([
     getPublicSettings(),
     getPublicCategories(),
@@ -110,6 +104,7 @@ export default async function HomePage() {
       PRODUCT_THEMES.map(async (theme) => {
         const query = new URLSearchParams({
           theme: theme.slug,
+          productType: 'three_d_printed',
           limit: String(THEME_PREVIEW_LIMIT),
         });
         const result = await getPublicCatalog(`?${query.toString()}`);
@@ -119,31 +114,68 @@ export default async function HomePage() {
     getPublicCatalog(
       `?productType=three_d_printed&limit=${HOME_RAIL_PRODUCT_LIMIT}`,
     ),
-    getPublicCatalog(
-      `?productType=canvas_paint_yourself&limit=${HOME_RAIL_PRODUCT_LIMIT}`,
+    Promise.all(
+      PRODUCT_CATEGORIES.map(async ({ slug }) => {
+        const query = new URLSearchParams({
+          category: slug,
+          productType: 'three_d_printed',
+          limit: String(CATEGORY_PRODUCT_LIMIT),
+        });
+        return {
+          slug,
+          result: await getPublicCatalog(`?${query.toString()}`),
+        };
+      }),
     ),
   ]);
 
-  const settings = settingsResult.data;
   const categories = categoriesResult.data ?? [];
-  const featured = featuredResult.data?.items ?? [];
+  const featured = (featuredResult.data?.items ?? []).filter(
+    (product) => product.productType === 'three_d_printed',
+  );
   const featuredIds = new Set(featured.map(({ id }) => id));
   const newProducts = (newResult.data?.items ?? []).filter(
-    ({ id }) => !featuredIds.has(id),
+    ({ id, productType }) =>
+      productType === 'three_d_printed' && !featuredIds.has(id),
   );
   const hasProducts = (allResult.data?.pagination.total ?? 0) > 0;
   const flatCategories = flattenCategories(categories);
   const categoriesBySlug = new Map(
     flatCategories.map((category) => [category.slug, category]),
   );
+  const categoryProductsBySlug = new Map(
+    categoryProductResults.map(({ slug, result }) => [
+      slug,
+      result.data?.items ?? [],
+    ]),
+  );
   const featuredCategories = categoriesResult.data
-    ? FEATURED_CATEGORY_SLUGS.flatMap((slug) => {
+    ? PRODUCT_CATEGORIES.flatMap(({ slug }) => {
         const category = categoriesBySlug.get(slug);
-        return category &&
-          category.children.length === 0 &&
-          category.productCount > 0
-          ? [category]
-          : [];
+        if (
+          !category ||
+          category.children.length > 0 ||
+          category.productCount === 0
+        ) {
+          return [];
+        }
+
+        const productsWithImages = (
+          categoryProductsBySlug.get(slug) ?? []
+        ).filter(
+          (
+            product,
+          ): product is CatalogCard & {
+            primaryImage: NonNullable<CatalogCard['primaryImage']>;
+          } => product.primaryImage !== null,
+        );
+        if (productsWithImages.length === 0) return [];
+
+        const product =
+          productsWithImages[
+            Math.floor(categoryImageSelectionSeed * productsWithImages.length)
+          ];
+        return product ? [{ category, product }] : [];
       })
     : [];
   const availableThemes = themeResults.flatMap(({ theme, result }) =>
@@ -152,10 +184,6 @@ export default async function HomePage() {
       : [],
   );
   const threeDProducts = threeDResult.data?.items ?? [];
-  const canvasProducts = canvasResult.data?.items ?? [];
-  const productLines = (settings?.productLines ?? []).filter(
-    (line) => line.isActive,
-  );
   const faqs = faqResult.data?.categories ?? [];
 
   return (
@@ -163,26 +191,30 @@ export default async function HomePage() {
       <section className="home-hero">
         <div className="home-hero__inner container">
           <div className="home-hero__copy">
-            <span className="eyebrow">Made personal, made with care</span>
-            <h1>Bring your ideas to life</h1>
-            {settings?.aboutNote ? <p>{settings.aboutNote}</p> : null}
+            <span className="eyebrow">Dainty Bloom · Custom 3D printing</span>
+            <h1>Make your ideas real with 3D printing</h1>
+            <p>
+              We make custom 3D prints the star of the show—from playful décor
+              and planters to one-of-a-kind pieces for your home. Looking for
+              something else? Ask us about a custom print.
+            </p>
             <div className="button-row">
               <Link className="button button--primary button--lg" href="/shop">
-                Shop now
+                Explore 3D prints
               </Link>
               <Link
                 className="button button--secondary button--lg"
                 href="/custom-3d-request"
               >
-                Request a custom product
+                Request a custom 3D print
               </Link>
             </div>
           </div>
           <div className="home-hero__visual">
             <Image
               className="home-hero__image"
-              src="/images/Home%20Hero.png"
-              alt="Dainty Bloom custom printing and creative products"
+              src="/images/new-home-hero.png"
+              alt="Colorful home décor including a table lamp, plants, vases, a candle, wine rack, and pet bowl"
               width={1536}
               height={1024}
               sizes="(max-width: 767px) calc(100vw - 2rem), (max-width: 1200px) 45vw, 510px"
@@ -197,83 +229,49 @@ export default async function HomePage() {
         </div>
       ) : null}
 
-      {productLines.length ? (
-        <section
-          className="home-section container"
-          aria-labelledby="product-lines-title"
-        >
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">Made to suit you</span>
-              <h2 id="product-lines-title">What we make</h2>
-            </div>
-          </div>
-          <div className="product-lines-grid">
-            {productLines.map((line) => {
-              const lineKey = line.key.toLowerCase().replaceAll('_', '-');
-              const category = flatCategories.find((item) =>
-                item.slug.toLowerCase().includes(lineKey),
-              );
-              return (
-                <Link
-                  className="product-line-card"
-                  href={category ? `/category/${category.slug}` : '/shop'}
-                  key={line.key}
-                >
-                  <span className="product-line-card__icon">
-                    <ProductLineIcon value={`${line.key} ${line.label}`} />
-                  </span>
-                  <h3>{line.label}</h3>
-                  <p>{line.description}</p>
-                  <span className="text-link">
-                    Explore <ArrowRight aria-hidden="true" size={16} />
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
-
       {featuredCategories.length ? (
         <section
           className="home-section container"
-          aria-labelledby="featured-categories-title"
+          aria-labelledby="product-categories-title"
         >
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Browse the collections</span>
-              <h2 id="featured-categories-title">Featured Categories</h2>
+              <span className="eyebrow">Made layer by layer</span>
+              <h2 id="product-categories-title">Browse by category</h2>
             </div>
             <Link className="text-link" href="/shop">
               All categories <ArrowRight aria-hidden="true" size={16} />
             </Link>
           </div>
-          <ul
-            className="home-rail home-rail--categories"
-            aria-label="Featured categories"
-          >
-            {featuredCategories.map((category) => (
-              <li className="home-rail__item" key={category._id}>
-                <Link
-                  className="category-card home-category-card"
-                  href={`/category/${encodeURIComponent(category.slug)}`}
-                >
-                  <span className="home-category-card__icon" aria-hidden="true">
-                    <ProductLineIcon
-                      value={`${category.name} ${category.formProfile ?? ''}`}
-                    />
-                  </span>
-                  <h3>{category.name}</h3>
-                  {category.description ? <p>{category.description}</p> : null}
-                  <span className="text-link">
-                    Explore collection{' '}
-                    <ArrowRight aria-hidden="true" size={16} />
-                  </span>
-                </Link>
-              </li>
+          <div className="product-lines-grid">
+            {featuredCategories.map(({ category, product }) => (
+              <Link
+                className="product-line-card home-category-product-card"
+                href={`/category/${encodeURIComponent(category.slug)}`}
+                key={category._id}
+              >
+                <div className="home-category-product-card__image">
+                  <Image
+                    src={
+                      product.primaryImage.variants.large ||
+                      product.primaryImage.url
+                    }
+                    alt={getProductImageAlt(
+                      product.title,
+                      product.primaryImage.alt,
+                    )}
+                    fill
+                    sizes="(max-width: 479px) 90vw, (max-width: 767px) 44vw, (max-width: 1023px) 44vw, 23vw"
+                  />
+                </div>
+                <h3>{category.name}</h3>
+                {category.description ? <p>{category.description}</p> : null}
+                <span className="text-link">
+                  Explore 3D prints <ArrowRight aria-hidden="true" size={16} />
+                </span>
+              </Link>
             ))}
-          </ul>
+          </div>
         </section>
       ) : null}
 
@@ -365,31 +363,45 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      {canvasProducts.length ? (
-        <section
-          className="home-section container"
-          aria-labelledby="paint-canvas-title"
+      <section className="home-section container custom-print-callout">
+        <div className="custom-print-callout__copy">
+          <span className="eyebrow">Beyond our 3D collection</span>
+          <h2>Custom prints, made to match your idea</h2>
+          <p>
+            We also take custom requests for printed T-shirts, mugs, tote bags,
+            phone cases, and two kinds of canvas: paint-it-yourself designs and
+            dimensional artwork built from layered filament mesh. These are made
+            to order by request rather than kept as standard shop items.
+          </p>
+          <p>
+            Choose a theme such as Autumn, Halloween, Christmas, or Anime—or
+            bring us your own. Tell us what you have in mind and we&apos;ll
+            review the design, then reply with availability, a quote, and next
+            steps before anything is made.
+          </p>
+        </div>
+        <ul
+          className="custom-print-callout__items"
+          aria-label="Custom print options"
         >
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">
-                A creative project to make your own
-              </span>
-              <h2 id="paint-canvas-title">Paint-It-Yourself Canvas</h2>
-            </div>
-            <Link
-              className="text-link"
-              href="/shop?productType=canvas_paint_yourself"
-            >
-              View all <ArrowRight aria-hidden="true" size={16} />
-            </Link>
-          </div>
-          <HomeProductGrid
-            products={canvasProducts}
-            label="Paint-it-yourself canvas products"
-          />
-        </section>
-      ) : null}
+          {[
+            'T-shirts',
+            'Mugs',
+            'Tote bags',
+            'Phone cases',
+            'Paint-it-yourself canvas',
+            'Textured filament-mesh canvas',
+          ].map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        <Link
+          className="button button--primary button--lg"
+          href="/custom-3d-request"
+        >
+          Explore custom options <ArrowRight size={17} aria-hidden="true" />
+        </Link>
+      </section>
 
       {allResult.unavailable ? (
         <section className="home-section container">

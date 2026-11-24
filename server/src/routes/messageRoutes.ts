@@ -11,6 +11,7 @@ import {
   token,
   customerAttachment,
   customerCustomRequest,
+  customerCustomRequestChanges,
   customerCustomRequests,
   customerCustomOfferImage,
   customerCustomOfferCheckout,
@@ -34,6 +35,7 @@ import {
   createMessageSchema,
   createCustomOfferSchema,
   customRequestTransitionSchema,
+  customRequestChangesSchema,
   messageIdSchema,
   messageListSchema,
   messageTokenSchema,
@@ -146,6 +148,13 @@ messageRoutes.get(
   requireRole('customer'),
   validate(messageIdSchema),
   customerCustomRequest,
+);
+messageRoutes.post(
+  '/custom-requests/:id/changes',
+  authenticate,
+  requireRole('customer'),
+  validate(customRequestChangesSchema),
+  customerCustomRequestChanges,
 );
 messageRoutes.get(
   '/custom-requests/:id/attachment',

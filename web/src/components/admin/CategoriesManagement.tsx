@@ -94,6 +94,7 @@ export function CategoriesManagement() {
   const [editing, setEditing] = useState<AdminCategory | null>(null);
   const [deleting, setDeleting] = useState<AdminCategory | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showInactive, setShowInactive] = useState(false);
   const [serverError, setServerError] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
   const {
@@ -243,7 +244,7 @@ export function CategoriesManagement() {
     <>
       <PageHeader
         title="Categories"
-        description="Organize the product catalog with parent and child categories."
+        description="Manage the eight 3D-printed product categories. Retired categories stay available for existing product references."
         actions={
           canWrite ? (
             <Button onClick={() => startEditor(null)}>
@@ -272,6 +273,15 @@ export function CategoriesManagement() {
           </Button>
         </section>
       ) : categories.data?.length ? (
+        <>
+        <label className="admin-category-archive-toggle">
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={(event) => setShowInactive(event.target.checked)}
+          />
+          Show retired categories and their existing product references
+        </label>
         <section className="admin-panel admin-category-tree">
           <div className="admin-category-header" aria-hidden="true">
             <span>Category</span>
@@ -283,7 +293,8 @@ export function CategoriesManagement() {
           {flat
             .filter(
               ({ category, depth }) =>
-                depth === 0 || expanded.has(category.parent ?? ''),
+                (showInactive || category.isActive) &&
+                (depth === 0 || expanded.has(category.parent ?? '')),
             )
             .map(({ category, depth }) => {
               const hasChildren = category.children.length > 0;
@@ -370,6 +381,7 @@ export function CategoriesManagement() {
               );
             })}
         </section>
+        </>
       ) : (
         <section className="admin-panel">
           <AdminEmptyState title="No categories yet">

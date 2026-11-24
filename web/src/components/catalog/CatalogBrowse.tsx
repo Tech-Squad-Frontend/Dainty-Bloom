@@ -24,6 +24,7 @@ import { Button, Checkbox, Input, Modal } from '@/components/ui';
 import { currencySymbol, formatMoney } from '@/lib/utils/formatMoney';
 import { useSettings } from '@/hooks/useSettings';
 import { PRODUCT_THEMES } from '@/lib/productThemes';
+import { PRODUCT_CATEGORIES } from '@/lib/productCategories';
 
 interface CatalogBrowseProps {
   initialData: CatalogPageData | null;
@@ -33,15 +34,6 @@ interface CatalogBrowseProps {
   theme?: ProductTheme;
   customBanner?: React.ReactNode;
 }
-
-const OTHER_PRODUCT_CATEGORIES = [
-  { slug: 't-shirts', name: 'T-Shirts' },
-  { slug: 'mugs', name: 'Mugs' },
-  { slug: 'paint-it-yourself-canvas', name: 'Paint-It-Yourself Canvas' },
-  { slug: '3d-printed-goods', name: '3D Printed Goods' },
-  { slug: 'hoodies', name: 'Hoodies' },
-  { slug: 'phone-cases', name: 'Phone Cases' },
-] as const;
 
 function flattenCategories(
   items: Category[],
@@ -139,7 +131,10 @@ export function CatalogBrowse({
     () => ({
       q: searchParams.get('q') ?? undefined,
       category: category?.slug ?? searchParams.get('category') ?? undefined,
-      productType: searchParams.get('productType') ?? undefined,
+      productType:
+        !category && !theme
+          ? 'three_d_printed'
+          : (searchParams.get('productType') ?? undefined),
       theme,
       printTechnique: searchParams.get('printTechnique') ?? undefined,
       minPrice: searchParams.has('minPrice')
@@ -232,7 +227,7 @@ export function CatalogBrowse({
   const availableCategories = new Map(
     allCategories.map(({ category: item }) => [item.slug, item]),
   );
-  const productCategoryChips = OTHER_PRODUCT_CATEGORIES.flatMap(
+  const productCategoryChips = PRODUCT_CATEGORIES.flatMap(
     ({ slug, name }) => {
       const item = availableCategories.get(slug);
       return item ? [{ ...item, name }] : [];
@@ -259,7 +254,7 @@ export function CatalogBrowse({
           </ul>
         </section>
       ) : null}
-      {data?.facets.productTypes.length ? (
+      {(category || themeDetails) && data?.facets.productTypes.length ? (
         <section className="catalog-filter-group">
           <h3>Product type</h3>
           {data.facets.productTypes.map((value) => (
@@ -453,10 +448,10 @@ export function CatalogBrowse({
       {productCategoryChips.length ? (
         <section
           className="category-chip-section"
-          aria-label="Other product categories"
+          aria-label="Product categories"
         >
-          <p className="category-chip-label">Other Products</p>
-          <nav className="category-chips" aria-label="Other product categories">
+          <p className="category-chip-label">Browse product categories</p>
+          <nav className="category-chips" aria-label="Product categories">
             {productCategoryChips.map((item) => (
               <Link
                 aria-current={item.slug === category?.slug ? 'page' : undefined}

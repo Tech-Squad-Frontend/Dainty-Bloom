@@ -227,10 +227,14 @@ export function UiPreview({ products, categories, catalog, product, cartLine, or
         <PreviewHeading title="Product lines and how it works" detail="Real storefront class structures with sample props." />
         <div className="product-lines-grid">
           {[
-            { title: '3D Printed Goods', description: 'Sample line description for made-to-order objects.' },
-            { title: 'Paint-It-Yourself Canvas', description: 'Sample line description for creative projects.' },
-            { title: 'Mugs', description: 'Sample line description for custom drinkware.' },
-            { title: 'T-Shirts', description: 'Sample line description for wearable prints.' },
+            { title: 'Flower Coasters', description: 'Sample line description for printed home pieces.' },
+            { title: 'Vases and Planters', description: 'Sample line description for plants and flowers.' },
+            { title: 'Lamps and Lighting', description: 'Sample line description for colorful lighting.' },
+            { title: 'Wine and Glass Racks', description: 'Sample line description for printed storage.' },
+            { title: 'Side Tables', description: 'Sample line description for statement furniture.' },
+            { title: 'Pet Bowl Stands', description: 'Sample line description for pet accessories.' },
+            { title: 'Seasonal Decorations', description: 'Sample line description for seasonal displays.' },
+            { title: 'Jewelry Boxes', description: 'Sample line description for keepsake storage.' },
           ].map((line) => (
             <article className="product-line-card" key={line.title}>
               <span className="product-line-card__icon"><ProductLineIcon value={line.title} /></span>

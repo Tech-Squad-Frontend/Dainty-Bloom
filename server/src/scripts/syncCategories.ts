@@ -5,7 +5,7 @@ import { ensureBusinessCategories } from './categoryDefinitions';
 async function run(): Promise<void> {
   await connectDatabase();
   try {
-    await ensureBusinessCategories(process.argv.includes('--deactivate-unused'));
+    await ensureBusinessCategories(true);
     logger.info('Business categories synchronized');
   } finally {
     await disconnectDatabase();

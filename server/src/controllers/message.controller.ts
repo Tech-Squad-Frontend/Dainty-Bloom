@@ -14,6 +14,7 @@ import {
   replyToContactMessage,
   updateContactMessage,
   transitionCustomRequestStatus,
+  customerRequestsCustomOfferChanges,
 } from '../services/message.service';
 import {
   createCustomOfferForRequest,
@@ -131,6 +132,17 @@ export const customerCustomRequest: RequestHandler = asyncHandler(
         request: await getCustomerCustomRequest(req.params.id, getActor(req)),
       },
     });
+  },
+);
+
+export const customerCustomRequestChanges: RequestHandler = asyncHandler(
+  async (req, res) => {
+    const request = await customerRequestsCustomOfferChanges(
+      req.params.id,
+      req.body.message,
+      getActor(req),
+    );
+    res.json({ success: true, data: { request } });
   },
 );
 

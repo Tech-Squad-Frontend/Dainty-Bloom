@@ -7,10 +7,10 @@ import type { ReactNode } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Camera, Music2, MessageCircle } from 'lucide-react';
-import type { Category, SiteSettings } from '@/lib/api/types';
-import { normalizeCategoryList } from '@/lib/api/normalizers';
+import type { SiteSettings } from '@/lib/api/types';
 import { api, ApiError } from '@/lib/api/client';
 import { Button, Checkbox, Input, useToast } from '@/components/ui';
+import { PRODUCT_CATEGORIES } from '@/lib/productCategories';
 
 const newsletterSchema = z.object({
   email: z.string().email(),
@@ -20,19 +20,10 @@ const newsletterSchema = z.object({
 });
 type NewsletterValues = z.infer<typeof newsletterSchema>;
 
-function flattenCategories(categories: unknown): Category[] {
-  return normalizeCategoryList(categories).flatMap((category) => [
-    category,
-    ...flattenCategories(category.children),
-  ]);
-}
-
 export function Footer({
   settings,
-  categories,
 }: {
   settings: SiteSettings | null;
-  categories: Category[] | null;
 }) {
   const toast = useToast();
   const {
@@ -80,14 +71,15 @@ export function Footer({
         .filter(Boolean)
         .join(', ')
     : '';
-  const shopCategories = flattenCategories(categories);
-
   return (
     <footer className="site-footer">
       <div className="footer-grid container">
         <div className="footer-brand">
           <Brand footer />
-          {settings?.aboutNote ? <p>{settings.aboutNote}</p> : null}
+          <p>
+            Retro-inspired décor, playful planters, custom home accents, and
+            colorful 3D prints for a happier home.
+          </p>
           {instagram || tiktok || whatsAppHref ? (
             <nav className="social-links" aria-label="Social media">
               {instagram ? (
@@ -124,7 +116,7 @@ export function Footer({
           ) : null}
         </div>
         <FooterColumn title="Shop">
-          {shopCategories.map((category) => (
+          {PRODUCT_CATEGORIES.map((category) => (
             <Link key={category.slug} href={`/category/${category.slug}`}>
               {category.name}
             </Link>

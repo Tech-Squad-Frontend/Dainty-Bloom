@@ -558,6 +558,17 @@ export interface PublicFaqs {
   }>;
 }
 
+export interface AdminFaq {
+  _id: string;
+  question: string;
+  answer: string;
+  category: string;
+  sortOrder: number;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MessageToken {
   token: string;
   issuedAt: string;
@@ -571,8 +582,13 @@ export type CustomRequestStatus =
   | 'accepted'
   | 'declined'
   | 'offer_created'
+  | 'changes_requested'
   | 'completed';
-export type CustomRequestNotificationStatus = 'pending' | 'sent' | 'failed';
+export type CustomRequestNotificationStatus =
+  | 'pending'
+  | 'sent'
+  | 'failed'
+  | 'not_verified';
 export type AdminMessageEmailDeliveryStatus =
   'not_tracked' | 'not_required' | 'pending' | 'sent' | 'failed';
 
@@ -617,7 +633,12 @@ export interface AdminMessageDetail extends AdminMessageListItem {
   customOffer: CustomOfferSummary | null;
   customRequestResponses: Array<{
     id: string | null;
-    status: 'accepted' | 'declined';
+    status:
+      | 'under_review'
+      | 'accepted'
+      | 'declined'
+      | 'offer_created'
+      | 'changes_requested';
     message: string;
     authorName: string | null;
     notificationStatus: CustomRequestNotificationStatus;
@@ -670,10 +691,21 @@ export interface CustomerCustomRequest {
   } | null;
   responses: Array<{
     id: string | null;
-    status: 'accepted' | 'declined';
+    status:
+      | 'under_review'
+      | 'accepted'
+      | 'declined'
+      | 'offer_created'
+      | 'changes_requested';
     message: string;
     authorName: string;
     notificationStatus: CustomRequestNotificationStatus;
+    createdAt: string;
+  }>;
+  replies: Array<{
+    id: string | null;
+    authorName: string;
+    body: string;
     createdAt: string;
   }>;
   createdAt: string;

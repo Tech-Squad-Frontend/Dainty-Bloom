@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Bell,
   Boxes,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ChartNoAxesCombined,
@@ -12,6 +13,7 @@ import {
   FileText,
   Gauge,
   HeartHandshake,
+  Eye,
   Image,
   LogOut,
   Menu,
@@ -24,12 +26,13 @@ import {
   Star,
   Users,
   Video,
+  Clock3,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, usePermissions } from '@/components/providers/AuthProvider';
 import { Brand } from '@/components/layout/Brand';
-import { AdminStatusBadge, ComingSoonLink } from '@/components/admin';
+import { AdminStatusBadge } from '@/components/admin';
 import { Modal, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api/client';
 import { sanitizeAdminNext } from '@/lib/auth/adminNavigation';
@@ -137,7 +140,7 @@ const adminNavigation: Array<{
     href: '/admin/faqs',
     icon: FileText,
     requiredPermission: 'settings:write',
-    built: false,
+    built: true,
   },
   {
     group: 'Team',
@@ -550,14 +553,10 @@ function AdminSidebar({
   );
 }
 
-function CommandPalette({
-  open,
-  onClose,
-  initialFocusRef,
+function AdminGlobalSearch({
+  inputRef,
 }: {
-  open: boolean;
-  onClose: () => void;
-  initialFocusRef: React.RefObject<HTMLInputElement | null>;
+  inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -566,7 +565,7 @@ function CommandPalette({
   const search = useQuery({
     queryKey: ['admin-search', debounced],
     queryFn: () => api.adminSearch(debounced),
-    enabled: open && debounced.length >= 2,
+    enabled: debounced.length >= 2,
     retry: false,
   });
 
@@ -592,54 +591,47 @@ function CommandPalette({
 
   function goTo(item: SearchItem) {
     if (!item.built) return;
-    onClose();
+    setQuery('');
     router.push(item.href);
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Search admin"
-      initialFocusRef={initialFocusRef}
-    >
-      <div className="admin-command">
-        <label className="visually-hidden" htmlFor="admin-command-input">
-          Search admin
-        </label>
-        <div className="admin-command__input">
-          <Search size={19} aria-hidden="true" />
-          <input
-            ref={initialFocusRef}
-            id="admin-command-input"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search orders, products, customers, messages"
-            autoComplete="off"
-            role="combobox"
-            aria-controls="admin-command-results"
-            aria-expanded={open && debounced.length >= 2}
-            aria-autocomplete="list"
-            aria-activedescendant={
-              active >= 0 ? `admin-command-option-${active}` : undefined
+    <div className="admin-global-search">
+      <label className="visually-hidden" htmlFor="admin-command-input">
+        Search admin
+      </label>
+      <div className="admin-command__input">
+        <Search size={19} aria-hidden="true" />
+        <input
+          ref={inputRef}
+          id="admin-command-input"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search orders, products, customers, messages"
+          autoComplete="off"
+          role="combobox"
+          aria-controls="admin-command-results"
+          aria-expanded={query.trim().length >= 2}
+          aria-autocomplete="list"
+          aria-activedescendant={
+            active >= 0 ? `admin-command-option-${active}` : undefined
+          }
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowDown' && items.length) {
+              event.preventDefault();
+              setActive((index) => (index + 1) % items.length);
+            } else if (event.key === 'ArrowUp' && items.length) {
+              event.preventDefault();
+              setActive((index) => (index <= 0 ? items.length - 1 : index - 1));
+            } else if (event.key === 'Enter' && active >= 0) {
+              event.preventDefault();
+              const item = items[active];
+              if (item) goTo(item);
             }
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowDown' && items.length) {
-                event.preventDefault();
-                setActive((index) => (index + 1) % items.length);
-              } else if (event.key === 'ArrowUp' && items.length) {
-                event.preventDefault();
-                setActive((index) =>
-                  index <= 0 ? items.length - 1 : index - 1,
-                );
-              } else if (event.key === 'Enter' && active >= 0) {
-                event.preventDefault();
-                const item = items[active];
-                if (item) goTo(item);
-              }
-            }}
-          />
-        </div>
+          }}
+        />
+      </div>
+      {query.trim().length > 0 ? (
         <div
           id="admin-command-results"
           className="admin-command__results"
@@ -647,54 +639,64 @@ function CommandPalette({
           aria-label="Admin search results"
           aria-live="polite"
         >
-          {debounced.length < 2 ? (
-            <p>Enter at least two characters to search.</p>
+          {query.trim().length < 2 ? (
+            <p>Type at least two characters to search.</p>
           ) : null}
-          {debounced.length >= 2 && search.isFetching ? (
+          {query.trim().length >= 2 &&
+          (search.isFetching || debounced !== query.trim()) ? (
             <p role="status">Searching…</p>
           ) : null}
-          {debounced.length >= 2 && search.isError ? (
+          {debounced.length >= 2 &&
+          debounced === query.trim() &&
+          search.isError ? (
             <p role="alert">
               {search.error instanceof ApiError
                 ? search.error.message
                 : 'Search is unavailable right now.'}
             </p>
           ) : null}
-          {debounced.length >= 2 && search.isSuccess && items.length === 0 ? (
+          {debounced.length >= 2 &&
+          debounced === query.trim() &&
+          search.isSuccess &&
+          items.length === 0 ? (
             <p>No matching records.</p>
           ) : null}
-          {grouped.map(({ group, items: groupItems }) => (
-            <section key={group} role="group" aria-label={group}>
-              <h3>{group}</h3>
-              {groupItems.map((item) => {
-                const index = items.indexOf(item);
-                return (
-                  <button
-                    key={`${group}-${item.label}-${index}`}
-                    id={`admin-command-option-${index}`}
-                    className={`admin-command-result${active === index ? ' is-active' : ''}`}
-                    type="button"
-                    role="option"
-                    aria-selected={active === index}
-                    disabled={!item.built}
-                    title={!item.built ? 'Coming soon' : `Open ${item.label}`}
-                    aria-label={`${item.label}. ${item.detail}${item.built ? '' : '. Coming soon'}`}
-                    onMouseEnter={() => setActive(index)}
-                    onClick={() => goTo(item)}
-                  >
-                    <span>
-                      <strong>{item.label}</strong>
-                      <small>{item.detail}</small>
-                    </span>
-                    {!item.built ? <em>Coming soon</em> : null}
-                  </button>
-                );
-              })}
-            </section>
-          ))}
+          {debounced === query.trim() && search.isSuccess
+            ? grouped.map(({ group, items: groupItems }) => (
+                <section key={group} role="group" aria-label={group}>
+                  <h3>{group}</h3>
+                  {groupItems.map((item) => {
+                    const index = items.indexOf(item);
+                    return (
+                      <button
+                        key={`${group}-${item.label}-${index}`}
+                        id={`admin-command-option-${index}`}
+                        className={`admin-command-result${active === index ? ' is-active' : ''}`}
+                        type="button"
+                        role="option"
+                        aria-selected={active === index}
+                        disabled={!item.built}
+                        title={
+                          !item.built ? 'Coming soon' : `Open ${item.label}`
+                        }
+                        aria-label={`${item.label}. ${item.detail}${item.built ? '' : '. Coming soon'}`}
+                        onMouseEnter={() => setActive(index)}
+                        onClick={() => goTo(item)}
+                      >
+                        <span>
+                          <strong>{item.label}</strong>
+                          <small>{item.detail}</small>
+                        </span>
+                        {!item.built ? <em>Coming soon</em> : null}
+                      </button>
+                    );
+                  })}
+                </section>
+              ))
+            : null}
         </div>
-      </div>
-    </Modal>
+      ) : null}
+    </div>
   );
 }
 
@@ -704,16 +706,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [tabletExpanded, setTabletExpanded] = useState(false);
-  const searchButtonRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
   const notifications = useQuery({
     queryKey: ['admin-notifications'],
     queryFn: api.adminNotifications,
-    refetchInterval: 60_000,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
     retry: false,
     enabled: pathname !== '/admin/login' && Boolean(user),
   });
@@ -727,11 +729,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       )
     : 0;
   const pageTitle = routeTitle(pathname);
-  const closeSearch = useCallback(() => {
-    setSearchOpen(false);
-    window.requestAnimationFrame(() => searchButtonRef.current?.focus());
-  }, []);
-
   useEffect(() => {
     function onShortcut(event: KeyboardEvent) {
       const target = event.target;
@@ -741,7 +738,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        setSearchOpen(true);
+        searchInputRef.current?.focus();
       } else if (
         event.key === '/' &&
         !typing &&
@@ -749,12 +746,30 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         !event.metaKey
       ) {
         event.preventDefault();
-        setSearchOpen(true);
+        searchInputRef.current?.focus();
       }
     }
     document.addEventListener('keydown', onShortcut);
     return () => document.removeEventListener('keydown', onShortcut);
   }, []);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    function dismissOutside(event: PointerEvent) {
+      if (!notificationsRef.current?.contains(event.target as Node)) {
+        setNotificationsOpen(false);
+      }
+    }
+    function dismissOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setNotificationsOpen(false);
+    }
+    document.addEventListener('pointerdown', dismissOutside);
+    document.addEventListener('keydown', dismissOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside);
+      document.removeEventListener('keydown', dismissOnEscape);
+    };
+  }, [notificationsOpen]);
 
   async function signOut() {
     try {
@@ -813,19 +828,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               </nav>
             </div>
             <div className="admin-topbar__actions">
-              <button
-                ref={searchButtonRef}
-                className="admin-topbar-icon admin-search-button"
-                type="button"
-                aria-label="Search admin"
-                title="Search (Ctrl+K or /)"
-                onClick={() => setSearchOpen(true)}
-              >
-                <Search size={19} aria-hidden="true" />
-                <span>Search</span>
-                <kbd>Ctrl K</kbd>
-              </button>
-              <div className="admin-popover-wrap">
+              <AdminGlobalSearch inputRef={searchInputRef} />
+              <div className="admin-popover-wrap" ref={notificationsRef}>
                 <button
                   className="admin-topbar-icon"
                   type="button"
@@ -864,10 +868,27 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                           <strong>{item.label}</strong>
                           <small>{item.count} items</small>
                         </span>
-                        <AdminStatusBadge
-                          status={item.count > 0 ? 'pending' : 'complete'}
-                        />
-                        <ComingSoonLink href={item.route}>View</ComingSoonLink>
+                        <span
+                          className={`admin-notification-state${item.count > 0 ? ' is-pending' : ' is-complete'}`}
+                          role="img"
+                          aria-label={item.count > 0 ? 'Pending' : 'Complete'}
+                          title={item.count > 0 ? 'Pending' : 'Complete'}
+                        >
+                          {item.count > 0 ? (
+                            <Clock3 size={18} aria-hidden="true" />
+                          ) : (
+                            <CheckCircle2 size={18} aria-hidden="true" />
+                          )}
+                        </span>
+                        <Link
+                          className="admin-notification-view"
+                          href={item.route}
+                          aria-label={`View ${item.label}`}
+                          title={`View ${item.label}`}
+                          onClick={() => setNotificationsOpen(false)}
+                        >
+                          <Eye size={18} aria-hidden="true" />
+                        </Link>
                       </div>
                     ))}
                   </div>
@@ -917,11 +938,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         >
           <AdminSidebar mobile onNavigate={() => setMenuOpen(false)} />
         </Modal>
-        <CommandPalette
-          open={searchOpen}
-          onClose={closeSearch}
-          initialFocusRef={searchInputRef}
-        />
       </div>
     </AdminAccessGuard>
   );

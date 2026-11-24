@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '@/components/admin';
 import { Button, ErrorState } from '@/components/ui';
 import { ApiError, api } from '@/lib/api/client';
 import type { AdminSettings } from '@/lib/api/types';
+import { Pencil } from 'lucide-react';
+
+type SettingsSection = 'storefront' | 'operations' | 'content';
 
 function errorMessage(error: unknown) {
   return error instanceof ApiError
@@ -28,6 +31,48 @@ function moneyText(value: number | null) {
   return value === null ? '' : (value / 100).toFixed(2);
 }
 
+function SettingsField({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="admin-settings-field">
+      <dt>{label}</dt>
+      <dd>{children || <span className="admin-settings-empty">Not set</span>}</dd>
+    </div>
+  );
+}
+
+function ReadOnlySettingsSection({
+  title,
+  description,
+  onEdit,
+  children,
+}: {
+  title: string;
+  description: string;
+  onEdit: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section className="admin-panel admin-settings-section">
+      <div className="admin-settings-section__heading">
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <Button variant="secondary" onClick={onEdit}>
+          <Pencil size={15} aria-hidden="true" /> Edit
+        </Button>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export function AdminSettingsManagement() {
   const queryClient = useQueryClient();
   const settings = useQuery({
@@ -37,22 +82,40 @@ export function AdminSettingsManagement() {
   });
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
+  const [editingSection, setEditingSection] = useState<SettingsSection | null>(
+    null,
+  );
   const save = useMutation({
-    mutationFn: (input: Partial<AdminSettings>) =>
-      api.updateAdminSettings(input),
-    onSuccess: async () => {
+    mutationFn: (input: {
+      section: SettingsSection;
+      settings: Partial<AdminSettings>;
+    }) => api.updateAdminSettings(input.settings),
+    onSuccess: async (_result, variables) => {
       setError('');
       setSaved('Settings saved.');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['admin-settings'] }),
         queryClient.invalidateQueries({ queryKey: ['settings'] }),
       ]);
+      if (editingSection === variables.section) setEditingSection(null);
     },
     onError: (reason) => {
       setSaved('');
       setError(errorMessage(reason));
     },
   });
+
+  function editSection(section: SettingsSection) {
+    setError('');
+    setSaved('');
+    setEditingSection(section);
+  }
+
+  function cancelEditing() {
+    setError('');
+    setSaved('');
+    setEditingSection(null);
+  }
 
   function submitStorefront(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -98,7 +161,7 @@ export function AdminSettingsManagement() {
       guestCheckoutEnabled: data.get('guestCheckoutEnabled') === 'on',
     };
     setSaved('');
-    save.mutate(input);
+    save.mutate({ section: 'storefront', settings: input });
   }
 
   function submitOperations(event: FormEvent<HTMLFormElement>) {
@@ -150,13 +213,16 @@ export function AdminSettingsManagement() {
     setError('');
     setSaved('');
     save.mutate({
-      shippingFlatMinor,
-      freeShippingThresholdMinor,
-      taxRateBasisPoints: Math.round(taxRate * 100),
-      shippingConfigured: data.get('shippingConfigured') === 'on',
-      taxConfigured: data.get('taxConfigured') === 'on',
-      orderCancellationWindowNote: String(data.get('cancellationNote') ?? ''),
-      artworkLimits: { maxBytes, allowedMimeTypes },
+      section: 'operations',
+      settings: {
+        shippingFlatMinor,
+        freeShippingThresholdMinor,
+        taxRateBasisPoints: Math.round(taxRate * 100),
+        shippingConfigured: data.get('shippingConfigured') === 'on',
+        taxConfigured: data.get('taxConfigured') === 'on',
+        orderCancellationWindowNote: String(data.get('cancellationNote') ?? ''),
+        artworkLimits: { maxBytes, allowedMimeTypes },
+      },
     });
   }
 
@@ -180,14 +246,17 @@ export function AdminSettingsManagement() {
     }
     setError('');
     setSaved('');
-    save.mutate({ openingHours, productLines });
+    save.mutate({
+      section: 'content',
+      settings: { openingHours, productLines },
+    });
   }
 
   return (
     <>
       <PageHeader
         title="Settings"
-        description="Configure storefront details and operational options already supported by the API."
+        description="Review your store profile, operations, and published content."
       />
       {settings.isPending ? (
         <section className="admin-panel" role="status">
@@ -214,8 +283,9 @@ export function AdminSettingsManagement() {
               {saved}
             </p>
           ) : null}
+          {editingSection === 'storefront' ? (
           <form
-            className="admin-panel admin-operation-form"
+            className="admin-panel admin-operation-form admin-settings-edit"
             onSubmit={submitStorefront}
           >
             <h2>Storefront and contact</h2>
@@ -420,13 +490,50 @@ export function AdminSettingsManagement() {
               />{' '}
               Allow guest checkout
             </label>
-            <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save storefront settings'}
-            </Button>
+            <div className="admin-settings-form-actions">
+              <Button type="button" variant="secondary" onClick={cancelEditing}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={save.isPending}>
+                {save.isPending ? 'Saving…' : 'Save changes'}
+              </Button>
+            </div>
           </form>
+          ) : (
+            <ReadOnlySettingsSection
+              title="Storefront and contact"
+              description="Public store identity, contact details, and customer-facing messages."
+              onEdit={() => editSection('storefront')}
+            >
+              <dl className="admin-settings-summary-grid">
+                <SettingsField label="Store name">{settings.data.storeName}</SettingsField>
+                <SettingsField label="Currency">{settings.data.currency}</SettingsField>
+                <SettingsField label="Country code">{settings.data.country}</SettingsField>
+                <SettingsField label="Contact email">{settings.data.contactEmail || settings.data.contact.email}</SettingsField>
+                <SettingsField label="Contact phone">{settings.data.contactPhone || settings.data.contact.phone}</SettingsField>
+                <SettingsField label="WhatsApp number">{settings.data.whatsappNumber}</SettingsField>
+                <SettingsField label="Instagram">{settings.data.socialLinks.instagram}</SettingsField>
+                <SettingsField label="TikTok">{settings.data.socialLinks.tiktok}</SettingsField>
+                <SettingsField label="WhatsApp link">{settings.data.socialLinks.whatsapp}</SettingsField>
+                <SettingsField label="Studio address">
+                  {[settings.data.studioAddress.label, settings.data.studioAddress.city, settings.data.studioAddress.country].filter(Boolean).join(', ')}
+                </SettingsField>
+                <SettingsField label="Address shown to customers">{settings.data.contact.address}</SettingsField>
+                <SettingsField label="Contact hours">{settings.data.contact.openingHours.join(' · ')}</SettingsField>
+                <SettingsField label="Opening hours display">{settings.data.openingHoursDisplayText}</SettingsField>
+                <SettingsField label="Turnaround message">{settings.data.turnaroundMessage}</SettingsField>
+                <SettingsField label="About note">{settings.data.aboutNote}</SettingsField>
+                <SettingsField label="Announcement bar">
+                  {settings.data.announcementBar.enabled ? `On · ${settings.data.announcementBar.text || 'No message set'}` : 'Off'}
+                </SettingsField>
+                <SettingsField label="Guest checkout">{settings.data.guestCheckoutEnabled ? 'Allowed' : 'Disabled'}</SettingsField>
+              </dl>
+            </ReadOnlySettingsSection>
+          )}
 
+          {editingSection === 'operations' ? (
           <form
-            className="admin-panel admin-operation-form"
+            className="admin-panel admin-operation-form admin-settings-edit"
             onSubmit={submitOperations}
           >
             <h2>Shipping, tax and artwork limits</h2>
@@ -521,13 +628,37 @@ export function AdminSettingsManagement() {
               />{' '}
               Tax calculation is configured
             </label>
-            <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save operational settings'}
-            </Button>
+            <div className="admin-settings-form-actions">
+              <Button type="button" variant="secondary" onClick={cancelEditing}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={save.isPending}>
+                {save.isPending ? 'Saving…' : 'Save changes'}
+              </Button>
+            </div>
           </form>
+          ) : (
+            <ReadOnlySettingsSection
+              title="Shipping, tax and artwork limits"
+              description="Rates, tax status, cancellation terms, and upload requirements."
+              onEdit={() => editSection('operations')}
+            >
+              <dl className="admin-settings-summary-grid">
+                <SettingsField label="Flat shipping amount">{`${settings.data.currency} ${moneyText(settings.data.shippingFlatMinor)}`}</SettingsField>
+                <SettingsField label="Free shipping threshold">{settings.data.freeShippingThresholdMinor === null ? 'Not set' : `${settings.data.currency} ${moneyText(settings.data.freeShippingThresholdMinor)}`}</SettingsField>
+                <SettingsField label="Tax rate">{`${(settings.data.taxRateBasisPoints / 100).toFixed(2)}%`}</SettingsField>
+                <SettingsField label="Shipping rates">{settings.data.shippingConfigured ? 'Configured' : 'Not configured'}</SettingsField>
+                <SettingsField label="Tax calculation">{settings.data.taxConfigured ? 'Configured' : 'Not configured'}</SettingsField>
+                <SettingsField label="Maximum artwork size">{`${(settings.data.artworkLimits.maxBytes / 1024 / 1024).toFixed(1)} MB`}</SettingsField>
+                <SettingsField label="Allowed file types">{settings.data.artworkLimits.allowedMimeTypes.join(', ')}</SettingsField>
+                <SettingsField label="Cancellation window">{settings.data.orderCancellationWindowNote}</SettingsField>
+              </dl>
+            </ReadOnlySettingsSection>
+          )}
 
+          {editingSection === 'content' ? (
           <form
-            className="admin-panel admin-operation-form"
+            className="admin-panel admin-operation-form admin-settings-edit"
             onSubmit={submitContent}
           >
             <h2>Product lines and opening schedule</h2>
@@ -563,10 +694,51 @@ export function AdminSettingsManagement() {
                 )}
               />
             </label>
-            <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save content configuration'}
-            </Button>
+            <div className="admin-settings-form-actions">
+              <Button type="button" variant="secondary" onClick={cancelEditing}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={save.isPending}>
+                {save.isPending ? 'Saving…' : 'Save changes'}
+              </Button>
+            </div>
           </form>
+          ) : (
+            <ReadOnlySettingsSection
+              title="Product lines and opening schedule"
+              description="Published product offerings and weekly opening hours."
+              onEdit={() => editSection('content')}
+            >
+              <div className="admin-settings-content-summary">
+                <div>
+                  <h3>Opening schedule</h3>
+                  {settings.data.openingHours.length ? (
+                    <ul className="admin-settings-hours-list">
+                      {settings.data.openingHours.map((entry, index) => (
+                        <li key={`${entry.days.join('-')}-${index}`}>
+                          <strong>{entry.days.join(', ')}</strong>
+                          <span>{entry.open}–{entry.close} · {entry.timezone}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="admin-settings-empty">No opening schedule set.</p>}
+                </div>
+                <div>
+                  <h3>Product lines</h3>
+                  {settings.data.productLines.length ? (
+                    <ul className="admin-settings-product-lines">
+                      {settings.data.productLines.map((line) => (
+                        <li key={line.key}>
+                          <div><strong>{line.label}</strong><span className={line.isActive ? 'is-active' : 'is-inactive'}>{line.isActive ? 'Active' : 'Inactive'}</span></div>
+                          <p>{line.description}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="admin-settings-empty">No product lines set.</p>}
+                </div>
+              </div>
+            </ReadOnlySettingsSection>
+          )}
         </>
       )}
     </>

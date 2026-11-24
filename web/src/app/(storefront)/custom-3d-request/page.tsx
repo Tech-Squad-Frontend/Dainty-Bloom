@@ -5,21 +5,21 @@ import { getPublicSettings } from '@/lib/api/server';
 import { getCanonicalUrl } from '@/lib/siteUrl';
 
 const description =
-  'Tell us about a custom product you would love us to make. Requests are reviewed for availability, pricing, and production feasibility.';
+  'Request a custom 3D print, T-shirt, mug, tote bag, phone case, or canvas. Share your idea and Dainty Bloom will review the design, feasibility, and quote with you.';
 const canonical = getCanonicalUrl('/custom-3d-request');
 export const metadata: Metadata = {
-  title: 'Request a Custom Product',
+  title: 'Custom Print and Canvas Requests',
   description,
   ...(canonical ? { alternates: { canonical } } : {}),
   openGraph: {
-    title: 'Request a Custom Product | Dainty Bloom',
+    title: 'Custom Print and Canvas Requests | Dainty Bloom',
     description,
     type: 'website',
     ...(canonical ? { url: canonical } : {}),
   },
   twitter: {
     card: 'summary',
-    title: 'Request a Custom Product | Dainty Bloom',
+    title: 'Custom Print and Canvas Requests | Dainty Bloom',
     description,
   },
 };
@@ -33,19 +33,25 @@ export default async function Custom3DRequestPage() {
       <nav aria-label="Breadcrumb" className="breadcrumbs">
         <Link href="/">Home</Link>
         <span aria-hidden="true">/</span>
-        <span aria-current="page">Custom product request</span>
+        <span aria-current="page">Custom print request</span>
       </nav>
 
       <header className="custom-3d-page__heading">
-        <span className="eyebrow">Made to your idea</span>
-        <h1>Request a Custom Product</h1>
+        <span className="eyebrow">Made to request</span>
+        <h1>Let’s make your idea</h1>
         <p>
-          Have an idea for something you&apos;d love us to make? Tell us about
-          it. You can upload your own design, share an image for inspiration,
-          or describe your idea in your own words. We&apos;ll review your
-          request and contact you about availability, pricing, and the next
-          steps.
+          Request a 3D print, a printed T-shirt, mug, tote bag or phone case, or
+          one of two canvas styles: paint-it-yourself or dimensional textured
+          artwork made with filament mesh. These are custom-only items. Share
+          your idea or artwork and a theme such as Autumn, Halloween, Christmas,
+          or Anime. We&apos;ll review what is possible and send you the details
+          and a quote before production.
         </p>
+        <ol className="custom-3d-page__steps" aria-label="How custom requests work">
+          <li><span>01</span> Tell us what you have in mind</li>
+          <li><span>02</span> We review and prepare a quote</li>
+          <li><span>03</span> You approve before we make it</li>
+        </ol>
       </header>
 
       <CustomProductRequestForm maxUploadBytes={maxUploadBytes} />

@@ -35,7 +35,9 @@ export async function startOrderCheckout(
   orderNumber: string,
   identity: CustomerIdentity,
 ): Promise<{ checkoutUrl: string; expiresAt: Date }> {
-  const order = await ownedOrder(orderNumber, identity);
+  const order = await prepareCheckoutProvider(
+    await ownedOrder(orderNumber, identity),
+  );
   const offerExpiresAt = order.customOffer
     ? await validateCustomOfferCheckout(order)
     : undefined;
@@ -52,7 +54,7 @@ export async function startOrderCheckout(
   const provider = getPaymentProviderByName(order.payment.provider);
   if (!provider.createCheckoutSession) {
     throw new AppError(
-      'Hosted checkout is not enabled',
+      'Stripe Checkout is not enabled for this order. The order uses the manual payment provider; set PAYMENT_PROVIDER=stripe and retry an unpaid order.',
       409,
       'PAYMENT_PROVIDER_UNAVAILABLE',
     );
@@ -258,6 +260,43 @@ export async function startOrderCheckout(
     }
     throw error;
   }
+}
+
+async function prepareCheckoutProvider(order: IOrder): Promise<IOrder> {
+  if (
+    env.PAYMENT_PROVIDER !== 'stripe' ||
+    order.payment.provider !== 'manual' ||
+    order.status !== 'pending_payment' ||
+    !['pending', 'failed'].includes(order.payment.status) ||
+    order.payment.providerReference ||
+    order.payment.stripeCheckoutSessionId ||
+    order.payment.stripePaymentIntentId ||
+    order.payment.method ||
+    order.payment.paidAt ||
+    order.refunds.length > 0
+  ) {
+    return order;
+  }
+
+  const migrated = await Order.findOneAndUpdate(
+    {
+      _id: order._id,
+      status: 'pending_payment',
+      'payment.status': { $in: ['pending', 'failed'] },
+      'payment.provider': 'manual',
+      'payment.providerReference': { $in: [null, ''] },
+      'payment.stripeCheckoutSessionId': { $in: [null, ''] },
+      'payment.stripePaymentIntentId': { $in: [null, ''] },
+      'payment.method': { $in: [null, ''] },
+      'payment.paidAt': { $in: [null] },
+      refunds: { $size: 0 },
+    },
+    { $set: { 'payment.provider': 'stripe' } },
+    { new: true },
+  );
+
+  if (migrated) return migrated;
+  return (await Order.findById(order._id)) ?? order;
 }
 
 export async function confirmOrderPayment(

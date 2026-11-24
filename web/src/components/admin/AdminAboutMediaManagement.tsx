@@ -259,7 +259,7 @@ export function AdminAboutMediaManagement() {
   }
 
   return (
-    <>
+    <div className="about-media-page">
       <PageHeader
         title="About media"
         description="Upload and arrange the photos and videos shown in the About page collection."
@@ -587,6 +587,6 @@ export function AdminAboutMediaManagement() {
           </div>
         )}
       </section>
-    </>
+    </div>
   );
 }

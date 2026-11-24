@@ -57,6 +57,12 @@ h3 {
   height: 36px;
 }
 
+.footer-wordmark img {
+  width: 3.5rem;
+  height: 3rem;
+  object-fit: contain;
+}
+
 .primary-navigation {
   min-width: 0;
   min-height: 64px;
@@ -160,7 +166,7 @@ h3 {
 
 .account-popover,
 .mini-cart {
-  top: calc(100% + 0.35rem);
+  top: 100%;
   width: min(18rem, calc(100vw - 1.5rem));
   padding: 0.8rem;
   border-radius: 0.8rem;
@@ -432,6 +438,11 @@ h3 {
     height: 32px;
   }
 
+  .footer-wordmark img {
+    width: 3.25rem;
+    height: 2.75rem;
+  }
+
   .header-actions {
     gap: 0.1rem;
   }
@@ -580,8 +591,9 @@ h3 {
 }
 
 @media (max-width: 359px) {
-  .brand > span {
-    display: none;
+  .brand {
+    gap: 0.12rem;
+    font-size: 15px;
   }
 
   .header-actions {

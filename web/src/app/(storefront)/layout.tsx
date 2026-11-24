@@ -1,19 +1,15 @@
 import type { ReactNode } from 'react';
 import { Footer } from '@/components/layout/Footer';
 import { Header } from '@/components/layout/Header';
-import { getPublicCategories, getPublicSettings } from '@/lib/api/server';
+import { getPublicSettings } from '@/lib/api/server';
 
 export default async function StorefrontLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  const [settingsResult, categoriesResult] = await Promise.all([
-    getPublicSettings(),
-    getPublicCategories(),
-  ]);
+  const settingsResult = await getPublicSettings();
   const settings = settingsResult.data;
-  const categories = categoriesResult.data;
 
   return (
     <>
@@ -26,7 +22,7 @@ export default async function StorefrontLayout({
       >
         {children}
       </main>
-      <Footer settings={settings} categories={categories} />
+      <Footer settings={settings} />
     </>
   );
 }

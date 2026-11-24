@@ -4,10 +4,10 @@
   background:
     radial-gradient(
       circle at 76% 20%,
-      rgb(168 230 207 / 34%),
+      rgb(242 107 33 / 16%),
       transparent 25rem
     ),
-    linear-gradient(115deg, #f4f0ff 0%, #f9f8f6 58%, #fff8f1 100%);
+    linear-gradient(115deg, #f47718 0%, #07518a 52%, #667c2f 100%);
 }
 
 .home-hero__inner {
@@ -25,14 +25,14 @@
 
 .home-hero__copy h1 {
   margin-block: 0.55rem 1rem;
-  color: var(--deep-purple);
+  color: #ffffff;
   font-size: clamp(2.8rem, 5vw, 4.3rem);
   line-height: 1.03;
 }
 
 .home-hero__copy p {
   max-width: 34rem;
-  color: var(--slate);
+  color: #ffffff;
   font-size: var(--type-lg);
 }
 
@@ -44,6 +44,10 @@
   text-transform: uppercase;
 }
 
+.home-hero__copy .eyebrow {
+  color: #fff2da;
+}
+
 .home-hero__visual {
   display: grid;
   min-height: 360px;
@@ -52,7 +56,7 @@
 
 .home-hero__image {
   display: block;
-  width: min(100%, 510px);
+  width: min(100%, 620px);
   height: auto;
   animation: home-hero-float 5s ease-in-out infinite;
 }
@@ -92,6 +96,50 @@
 
 .home-section {
   padding-block: clamp(2.5rem, 5vw, 4.5rem);
+}
+
+.custom-print-callout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.65fr);
+  align-items: center;
+  gap: 1.4rem 2rem;
+  margin-block: 1rem;
+  padding: clamp(1.4rem, 4vw, 2.5rem);
+  border: 1px solid #f2d1ad;
+  border-radius: 1.5rem;
+  background: linear-gradient(135deg, #fff8ee, #ffffff 65%, #f1f6ed);
+}
+
+.custom-print-callout__copy h2 {
+  margin-block: 0.35rem 0.7rem;
+}
+
+.custom-print-callout__copy p {
+  max-width: 54rem;
+  color: var(--slate);
+}
+
+.custom-print-callout__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.custom-print-callout__items li,
+.about-experience__items li {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--deep-purple);
+  font-size: var(--type-sm);
+}
+
+.custom-print-callout > .button {
+  justify-self: start;
 }
 
 .section-heading {
@@ -311,6 +359,35 @@
   margin-top: auto;
 }
 
+.home-category-product-card {
+  overflow: hidden;
+  padding: 0;
+}
+
+.home-category-product-card__image {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: var(--page-alt);
+}
+
+.home-category-product-card__image img {
+  object-fit: cover;
+}
+
+.home-category-product-card h3 {
+  margin: 1rem 1rem 0;
+}
+
+.home-category-product-card p {
+  margin-right: 1rem;
+  margin-left: 1rem;
+}
+
+.home-category-product-card .text-link {
+  margin: auto 1rem 1rem;
+}
+
 @media (max-width: 1023px) {
   .home-rail__item {
     flex-basis: calc((100% - 2rem) / 3);
@@ -458,15 +535,11 @@
   margin-top: 1.2rem;
   padding: clamp(2rem, 5vw, 4rem);
   overflow: hidden;
-  border: 1px solid #e5def8;
+  border: 1px solid #f2d49b;
   border-radius: 1.75rem;
   background:
-    radial-gradient(
-      circle at 82% 20%,
-      rgb(168 230 207 / 35%),
-      transparent 15rem
-    ),
-    linear-gradient(115deg, #f2efff 0%, #fcfbfa 60%, #fff5ed 100%);
+    radial-gradient(circle at 82% 20%, rgb(99 125 62 / 18%), transparent 15rem),
+    linear-gradient(115deg, #fff0df 0%, #fffefa 60%, #fff4df 100%);
 }
 
 .about-hero__copy {
@@ -499,19 +572,16 @@
 .about-hero__art {
   z-index: 1;
   width: min(100%, 22rem);
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 3 / 2;
   overflow: hidden;
-  border: 8px solid var(--surface);
-  border-radius: 50%;
-  background: var(--lavender-tint);
-  box-shadow: 0 1.2rem 3.5rem rgb(48 49 59 / 15%);
-  transform: rotate(3deg);
+  border-radius: 1.25rem;
+  background: transparent;
 }
 
 .about-hero__art img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
 }
 
@@ -641,11 +711,7 @@
   place-items: center;
   overflow: hidden;
   background:
-    radial-gradient(
-      circle at 85% 15%,
-      rgb(168 230 207 / 28%),
-      transparent 12rem
-    ),
+    radial-gradient(circle at 85% 15%, rgb(99 125 62 / 18%), transparent 12rem),
     var(--page-alt);
 }
 
@@ -791,6 +857,15 @@
   flex: 0 0 auto;
 }
 
+.about-experience__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
 .about-cta {
   display: flex;
   align-items: center;
@@ -841,6 +916,15 @@
   .about-cta {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .custom-print-callout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .custom-print-callout > .button {
+    width: 100%;
+    justify-content: center;
   }
 }
 

@@ -385,17 +385,15 @@ export function OrderActions({
   }) => void;
 }) {
   return (
-    <section
-      className="admin-operation-actions"
-      aria-labelledby="order-actions-title"
-    >
-      <h3 id="order-actions-title">Order actions</h3>
+    <div className="admin-operation-actions" aria-label="Available order actions">
       <ErrorNotice error={error} />
+      <div className="admin-order-action-grid">
       {canUpdateStatus &&
       order.allowedNextStatuses.filter(
         (status) => status !== 'cancelled' && status !== 'shipped',
       ).length ? (
         <form
+          className="admin-order-action-card"
           onSubmit={(event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget);
@@ -414,6 +412,7 @@ export function OrderActions({
             }
           }}
         >
+          <h3>Update status</h3>
           <label>
             Next status
             <select className="input" name="nextStatus" defaultValue="">
@@ -440,6 +439,7 @@ export function OrderActions({
       ) : null}
       {canUpdateStatus && order.status === 'ready' ? (
         <form
+          className="admin-order-action-card"
           onSubmit={(event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget);
@@ -459,7 +459,7 @@ export function OrderActions({
             }
           }}
         >
-          <h4>Record dispatch</h4>
+          <h3>Record dispatch</h3>
           <label>
             Carrier
             <input className="input" name="carrier" required maxLength={100} />
@@ -488,6 +488,7 @@ export function OrderActions({
       ) : null}
       {canUpdateStatus && order.allowedNextStatuses.includes('cancelled') ? (
         <form
+          className="admin-order-action-card admin-order-action-card--danger"
           onSubmit={(event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget);
@@ -497,7 +498,7 @@ export function OrderActions({
             }
           }}
         >
-          <h4>Cancel order</h4>
+          <h3>Cancel order</h3>
           <label>
             Reason
             <input
@@ -525,6 +526,7 @@ export function OrderActions({
         order.payment.status,
       ) ? (
         <form
+          className="admin-order-action-card"
           onSubmit={(event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget);
@@ -542,7 +544,7 @@ export function OrderActions({
             }
           }}
         >
-          <h4>Record or request refund</h4>
+          <h3>Record a refund</h3>
           <p className="admin-operation-note">
             Refunds are limited to the remaining order balance. Confirm the
             configured payment provider&apos;s response before reporting
@@ -582,6 +584,7 @@ export function OrderActions({
       ) : null}
       {canUpdateStatus ? (
         <form
+          className="admin-order-action-card"
           onSubmit={(event) => {
             event.preventDefault();
             const form = event.currentTarget;
@@ -594,7 +597,7 @@ export function OrderActions({
             }
           }}
         >
-          <h4>Internal note</h4>
+          <h3>Add an internal note</h3>
           <label>
             Note
             <textarea
@@ -610,6 +613,7 @@ export function OrderActions({
           </Button>
         </form>
       ) : null}
-    </section>
+      </div>
+    </div>
   );
 }

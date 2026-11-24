@@ -1,1 +1,1 @@
-Place dainty-bloom-logo.png here
+Brand assets: new-logo.png and new-home-hero.png

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   useEffect,
   useRef,
@@ -26,21 +27,17 @@ import { SearchOverlay } from '@/components/layout/SearchOverlay';
 import { useCartSummary } from '@/hooks/useCartSummary';
 import { Button, Modal, useToast } from '@/components/ui';
 import { formatMoney } from '@/lib/utils/formatMoney';
+import { PRODUCT_CATEGORIES } from '@/lib/productCategories';
+import { api } from '@/lib/api/client';
 
 interface HeaderProps {
   settings: SiteSettings | null;
 }
 
-const categoryLinks = [
-  { label: 'T-Shirts', href: '/category/t-shirts' },
-  { label: 'Mugs', href: '/category/mugs' },
-  { label: 'Hoodies', href: '/category/hoodies' },
-  { label: 'Phone Cases', href: '/category/phone-cases' },
-  { label: 'Themes', href: '/themes' },
-  { label: 'Toys', href: '/category/toys' },
-  { label: 'Home Decor', href: '/category/home-decor' },
-  { label: 'Lamps & Lighting', href: '/category/lamps-and-lighting' },
-] as const;
+const categoryLinks = PRODUCT_CATEGORIES.map(({ name, slug }) => ({
+  label: name,
+  href: `/category/${slug}`,
+}));
 
 function subscribeAnnouncementDismissal(callback: () => void) {
   window.addEventListener('announcement-dismissed', callback);
@@ -61,6 +58,17 @@ export function Header({ settings }: HeaderProps) {
   const toast = useToast();
   const { user, logout } = useAuth();
   const cart = useCartSummary();
+  const customRequests = useQuery({
+    queryKey: ['customer-custom-requests'],
+    queryFn: api.customerCustomRequests,
+    enabled: user?.role === 'customer',
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+  const readyOfferCount = (customRequests.data ?? []).filter(
+    (request) => request.customRequestStatus === 'offer_created',
+  ).length;
   const announcementDismissed = useSyncExternalStore(
     subscribeAnnouncementDismissal,
     isAnnouncementDismissed,
@@ -77,6 +85,7 @@ export function Header({ settings }: HeaderProps) {
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const cartButtonRef = useRef<HTMLButtonElement>(null);
   const cartWrapRef = useRef<HTMLDivElement>(null);
+  const accountWrapRef = useRef<HTMLDivElement>(null);
   const categoriesMenuRef = useRef<HTMLDivElement>(null);
   const categoriesButtonRef = useRef<HTMLButtonElement>(null);
   const [categoriesState, setCategoriesState] = useState({
@@ -226,6 +235,28 @@ export function Header({ settings }: HeaderProps) {
     };
   }, [cartOpen, updatePanel]);
 
+  useEffect(() => {
+    if (!accountOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !accountWrapRef.current?.contains(event.target)
+      ) {
+        updatePanel('account', false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      updatePanel('account', false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [accountOpen, updatePanel]);
+
   const hideAnnouncement = () => {
     sessionStorage.setItem('announcement-dismissed', 'true');
     window.dispatchEvent(new Event('announcement-dismissed'));
@@ -342,22 +373,10 @@ export function Header({ settings }: HeaderProps) {
               ) : null}
             </div>
             <Link
-              className={
-                pathname === '/category/3d-printed-goods' ? 'is-active' : ''
-              }
-              href="/category/3d-printed-goods"
+              className={pathname === '/shop' ? 'is-active' : ''}
+              href="/shop"
             >
               3D Prints
-            </Link>
-            <Link
-              className={
-                pathname === '/category/paint-it-yourself-canvas'
-                  ? 'is-active'
-                  : ''
-              }
-              href="/category/paint-it-yourself-canvas"
-            >
-              Paint-It-Yourself Canvas
             </Link>
             <Link
               className={pathname === '/about' ? 'is-active' : ''}
@@ -383,7 +402,8 @@ export function Header({ settings }: HeaderProps) {
               <Search aria-hidden="true" />
             </button>
             <div
-              className="account-wrap"
+              ref={accountWrapRef}
+              className={`account-wrap${accountOpen ? ' is-open' : ''}`}
               onBlur={(event) => {
                 if (
                   !event.currentTarget.contains(
@@ -421,6 +441,11 @@ export function Header({ settings }: HeaderProps) {
                   {user.role === 'customer' ? (
                     <Link href="/account/custom-requests">
                       <Package size={17} /> My custom requests
+                      {readyOfferCount ? (
+                        <span className="count-badge" aria-label={`${readyOfferCount} offer${readyOfferCount === 1 ? '' : 's'} ready`}>
+                          {readyOfferCount}
+                        </span>
+                      ) : null}
                     </Link>
                   ) : null}
                   {user.role !== 'customer' ? (
@@ -445,7 +470,7 @@ export function Header({ settings }: HeaderProps) {
             </Link>
             <div
               ref={cartWrapRef}
-              className="cart-wrap"
+              className={`cart-wrap${cartOpen ? ' is-open' : ''}`}
               onPointerEnter={(event) => {
                 if (event.pointerType === 'mouse') updatePanel('cart', true);
               }}
@@ -549,11 +574,8 @@ export function Header({ settings }: HeaderProps) {
                 </Link>
               ))}
             </div>
-            <Link href="/category/3d-printed-goods" onClick={closeMenu}>
+            <Link href="/shop" onClick={closeMenu}>
               3D Prints
-            </Link>
-            <Link href="/category/paint-it-yourself-canvas" onClick={closeMenu}>
-              Paint-It-Yourself Canvas
             </Link>
             <Link href="/about" onClick={closeMenu}>
               About Us
@@ -575,6 +597,11 @@ export function Header({ settings }: HeaderProps) {
               {user.role === 'customer' ? (
                 <Link href="/account/custom-requests" onClick={closeMenu}>
                   My custom requests
+                  {readyOfferCount ? (
+                    <span className="count-badge" aria-label={`${readyOfferCount} offer${readyOfferCount === 1 ? '' : 's'} ready`}>
+                      {readyOfferCount}
+                    </span>
+                  ) : null}
                 </Link>
               ) : null}
               {user.role !== 'customer' ? (

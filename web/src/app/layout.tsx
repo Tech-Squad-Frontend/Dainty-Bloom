@@ -21,7 +21,7 @@ const cormorant = Cormorant_Garamond({
 });
 
 const description =
-  'Explore custom-printed goods and creative projects from Dainty Bloom. Browse current products and the options available for each item.';
+  'Discover retro dopamine décor, plants and planters, custom-printed home accents, and playful 3D prints from Dainty Bloom.';
 const siteUrl = getConfiguredSiteUrl();
 const indexingEnabled = isProductionIndexingEnabled();
 
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
       ? {
           images: [
             {
-              url: new URL('/images/dainty-bloom-logo.png', siteUrl).toString(),
+              url: new URL('/images/new-logo.png', siteUrl).toString(),
               width: 640,
               height: 426,
               alt: 'Dainty Bloom',
@@ -57,12 +57,12 @@ export const metadata: Metadata = {
     ...(siteUrl
       ? {
           images: [
-            new URL('/images/dainty-bloom-logo.png', siteUrl).toString(),
+            new URL('/images/new-logo.png', siteUrl).toString(),
           ],
         }
       : {}),
   },
-  icons: { icon: '/images/dainty-bloom-logo.png' },
+  icons: { icon: '/images/new-logo.png' },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

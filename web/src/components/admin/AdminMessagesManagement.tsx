@@ -18,7 +18,7 @@ import type {
 } from '@/lib/api/types';
 
 const MESSAGE_TYPES: Array<{ value: '' | AdminMessageType; label: string }> = [
-  { value: 'custom_3d_request', label: 'Custom product requests' },
+  { value: 'custom_3d_request', label: 'Custom requests' },
   { value: '', label: 'All messages' },
   { value: 'general', label: 'General enquiries' },
   { value: 'bulk_quote', label: 'Bulk quote requests' },
@@ -47,9 +47,19 @@ function formatDate(value: string | undefined): string {
 }
 
 function messageTypeLabel(type: AdminMessageType): string {
-  if (type === 'custom_3d_request') return 'Custom product request';
+  if (type === 'custom_3d_request') return 'Custom request';
   if (type === 'bulk_quote') return 'Bulk quote';
   return 'General enquiry';
+}
+
+interface ConversationEntry {
+  id: string;
+  kind: 'customer' | 'staff' | 'decision';
+  sender: string;
+  body: string;
+  createdAt: string;
+  label?: string;
+  delivery?: 'pending' | 'sent' | 'failed' | 'not_verified';
 }
 
 function customRequestStatusLabel(status: CustomRequestStatus | null): string {
@@ -59,16 +69,18 @@ function customRequestStatusLabel(status: CustomRequestStatus | null): string {
     accepted: 'Accepted',
     declined: 'Declined',
     offer_created: 'Offer created',
+    changes_requested: 'Changes requested',
     completed: 'Completed',
   };
   return status ? labels[status] : 'Not a custom request';
 }
 
 function notificationStatusLabel(
-  status: 'pending' | 'sent' | 'failed',
+  status: 'pending' | 'sent' | 'failed' | 'not_verified',
 ): string {
   if (status === 'sent') return 'Email sent';
   if (status === 'failed') return 'Email failed — response remains saved';
+  if (status === 'not_verified') return 'Email skipped — customer email is not verified';
   return 'Email pending';
 }
 
@@ -139,7 +151,7 @@ function formatOfferPrice(offer: CustomOfferSummary): string {
 
 function offerStatusLabel(status: CustomOfferSummary['status']): string {
   const labels: Record<CustomOfferSummary['status'], string> = {
-    available: 'Created — not purchasable yet',
+    available: 'Ready for customer review',
     reserved: 'Reserved',
     purchased: 'Purchased',
     expired: 'Expired',
@@ -176,6 +188,8 @@ export function AdminMessagesManagement() {
     queryKey: ['admin-messages', filters],
     queryFn: () => api.adminMessages(filters),
     retry: false,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
   const items = messages.data?.items ?? [];
   const activeId = items.some((item) => item.id === selectedId)
@@ -187,6 +201,8 @@ export function AdminMessagesManagement() {
     queryFn: () => api.adminMessage(activeId),
     enabled: Boolean(activeId),
     retry: false,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
   const updateStatus = useMutation({
     mutationFn: (input: { id: string; status: AdminMessageStatus }) =>
@@ -266,6 +282,54 @@ export function AdminMessagesManagement() {
   const [replyValidationError, setReplyValidationError] = useState('');
 
   const detail = selectedMessage.data;
+  const conversation: ConversationEntry[] = detail
+    ? [
+        {
+          id: `request-${detail.id}`,
+          kind: 'customer' as const,
+          sender: detail.name,
+          body:
+            detail.type === 'custom_3d_request'
+              ? detail.requestDetails?.description || detail.message
+              : detail.message,
+          createdAt: detail.createdAt,
+          label:
+            detail.type === 'custom_3d_request'
+              ? 'Custom request'
+              : 'Customer enquiry',
+        },
+        ...detail.customRequestResponses.map((response, index) => ({
+          id: response.id ?? `decision-${index}-${response.createdAt}`,
+          kind: 'decision' as const,
+          sender: response.authorName ?? 'Dainty Bloom team',
+          body: response.message,
+          createdAt: response.createdAt,
+          label:
+            ({
+              under_review: 'Under review',
+              accepted: 'Request accepted',
+              declined: 'Request declined',
+              offer_created: 'Private offer ready',
+              changes_requested: 'Customer requested changes',
+            } as const)[response.status],
+          delivery: response.notificationStatus,
+        })),
+        ...detail.replies.map((response, index) => ({
+          id: response.id ?? `reply-${index}-${response.createdAt}`,
+          kind: 'staff' as const,
+          sender: response.authorName ?? 'Dainty Bloom team',
+          body: response.body,
+          createdAt: response.createdAt,
+          label: 'Reply',
+        })),
+      ]
+        .filter((entry) => entry.body.trim().length > 0)
+        .sort(
+          (left, right) =>
+            new Date(left.createdAt).getTime() -
+            new Date(right.createdAt).getTime(),
+        )
+    : [];
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -537,6 +601,42 @@ export function AdminMessagesManagement() {
                 ) : null}
               </dl>
 
+              <section
+                className="admin-message-conversation"
+                aria-labelledby="message-conversation-title"
+              >
+                <div className="admin-message-conversation__heading">
+                  <div>
+                    <h3 id="message-conversation-title">Conversation</h3>
+                    <p>Customer messages and team updates, in order</p>
+                  </div>
+                  <span>
+                    {conversation.length}{' '}
+                    {conversation.length === 1 ? 'message' : 'messages'}
+                  </span>
+                </div>
+                <ol className="admin-message-conversation__list">
+                  {conversation.map((entry) => (
+                    <li
+                      key={entry.id}
+                      className={`admin-message-bubble admin-message-bubble--${entry.kind}`}
+                    >
+                      <div className="admin-message-bubble__meta">
+                        <strong>{entry.sender}</strong>
+                        <span>{entry.label}</span>
+                        <time dateTime={entry.createdAt}>
+                          {formatDate(entry.createdAt)}
+                        </time>
+                      </div>
+                      <p className="admin-message-body">{entry.body}</p>
+                      {entry.delivery ? (
+                        <small>{notificationStatusLabel(entry.delivery)}</small>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+
               {detail.requestDetails ? (
                 <section
                   className="admin-message-request-details"
@@ -545,14 +645,6 @@ export function AdminMessagesManagement() {
                   <h3 id="request-details-title">
                     Custom product request details
                   </h3>
-                  {detail.requestDetails.description ? (
-                    <div>
-                      <strong>Description</strong>
-                      <p className="admin-message-body">
-                        {detail.requestDetails.description}
-                      </p>
-                    </div>
-                  ) : null}
                   <dl className="admin-message-fields">
                     {detail.requestDetails.productName ? (
                       <>
@@ -632,11 +724,6 @@ export function AdminMessagesManagement() {
                     ) : null}
                   </dl>
                 </section>
-              ) : detail.message ? (
-                <div>
-                  <h3>Message</h3>
-                  <p className="admin-message-body">{detail.message}</p>
-                </div>
               ) : null}
 
               {detail.attachment ? (
@@ -657,7 +744,7 @@ export function AdminMessagesManagement() {
               ) : null}
               {detail.type === 'custom_3d_request' ? (
                 <section
-                  className="admin-operation-actions"
+                  className="admin-operation-actions admin-message-request-workflow"
                   aria-labelledby="custom-request-lifecycle-heading"
                 >
                   <h3 id="custom-request-lifecycle-heading">
@@ -669,33 +756,6 @@ export function AdminMessagesManagement() {
                       {customRequestStatusLabel(detail.customRequestStatus)}
                     </strong>
                   </p>
-                  {detail.customRequestResponses.length ? (
-                    <ol className="admin-operation-list">
-                      {detail.customRequestResponses.map((response, index) => (
-                        <li
-                          key={response.id ?? `${response.createdAt}-${index}`}
-                        >
-                          <strong>
-                            {response.status === 'accepted'
-                              ? 'Accepted'
-                              : 'Declined'}
-                          </strong>{' '}
-                          · {response.authorName ?? 'Staff'} ·{' '}
-                          {formatDate(response.createdAt)}
-                          <span className="admin-operation-review-body">
-                            {response.message}
-                          </span>
-                          <span>
-                            {notificationStatusLabel(
-                              response.notificationStatus,
-                            )}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p>No administrator decision has been recorded.</p>
-                  )}
                   {detail.customOffer ? (
                     <section
                       className="admin-operation-actions"
@@ -757,7 +817,7 @@ export function AdminMessagesManagement() {
                   detail.customRequestStatus === 'under_review' ? (
                     <>
                       <label>
-                        Response to customer
+                        Decision message to customer
                         <textarea
                           className="input"
                           rows={3}
@@ -853,7 +913,7 @@ export function AdminMessagesManagement() {
                       <h4>Create a private custom offer</h4>
                       <p>
                         The offer will be linked to {detail.customer.name} and
-                        remain private. Checkout is not enabled.
+                        remain private and can be paid for through secure checkout.
                       </p>
                       <label>
                         Offer title
@@ -1051,114 +1111,112 @@ export function AdminMessagesManagement() {
                   ) : null}
                 </section>
               ) : null}
-              {detail.replies.length ? (
-                <section
-                  className="admin-operation-actions"
-                  aria-labelledby="message-replies-heading"
+              {!(
+                detail.type === 'custom_3d_request' &&
+                (detail.customRequestStatus === 'submitted' ||
+                  detail.customRequestStatus === 'under_review')
+              ) ? (
+                <form
+                  className="admin-operation-actions admin-message-composer"
+                  key={`message-reply-${detail.id}`}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const data = new FormData(event.currentTarget);
+                    const body = String(data.get('replyBody') ?? '').trim();
+                    const priceText = String(
+                      data.get('quotedPrice') ?? '',
+                    ).trim();
+                    const note = String(data.get('quoteNote') ?? '').trim();
+                    let quotedPriceMinor: number | undefined;
+                    if (priceText) {
+                      if (!/^\d+(?:\.\d{1,2})?$/.test(priceText)) {
+                        setReplyValidationError(
+                          'Enter a non-negative quote with up to two decimal places.',
+                        );
+                        return;
+                      }
+                      const [whole, fraction = ''] = priceText.split('.');
+                      const parsed =
+                        Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+                      if (!Number.isSafeInteger(parsed)) {
+                        setReplyValidationError(
+                          'The quote amount is too large.',
+                        );
+                        return;
+                      }
+                      quotedPriceMinor = parsed;
+                    }
+                    setReplyValidationError('');
+                    if (body) {
+                      reply.mutate({
+                        id: detail.id,
+                        body,
+                        ...(quotedPriceMinor !== undefined
+                          ? { quotedPriceMinor }
+                          : {}),
+                        ...(note ? { note } : {}),
+                      });
+                    }
+                  }}
                 >
-                  <h3 id="message-replies-heading">Reply history</h3>
-                  <ol className="admin-operation-list">
-                    {detail.replies.map((item, index) => (
-                      <li key={item.id ?? `${item.createdAt}-${index}`}>
-                        <strong>{item.authorName ?? 'Staff'}</strong> ·{' '}
-                        {formatDate(item.createdAt)}
-                        <span className="admin-operation-review-body">
-                          {item.body}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
+                  <h3>
+                    {detail.replies.length ||
+                    detail.customRequestResponses.length
+                      ? 'Continue conversation'
+                      : 'Reply to customer'}
+                  </h3>
+                  <label>
+                    Reply
+                    <textarea
+                      className="input"
+                      name="replyBody"
+                      required
+                      rows={5}
+                      maxLength={10000}
+                    />
+                  </label>
+                  <label>
+                    Quote amount in GBP (optional)
+                    <input
+                      className="input"
+                      name="quotedPrice"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                    />
+                  </label>
+                  <label>
+                    Quote note (optional)
+                    <input
+                      className="input"
+                      name="quoteNote"
+                      maxLength={2000}
+                    />
+                  </label>
+                  <p className="admin-operation-note">
+                    Replies use the configured email service. If delivery is
+                    unavailable, the API reports an error.
+                  </p>
+                  <Button type="submit" disabled={reply.isPending}>
+                    {reply.isPending ? 'Sending…' : 'Send reply'}
+                  </Button>
+                  {replyValidationError ? (
+                    <p className="admin-operation-error" role="alert">
+                      {replyValidationError}
+                    </p>
+                  ) : null}
+                  {reply.isError && reply.variables?.id === detail.id ? (
+                    <p className="admin-operation-error" role="alert">
+                      {reply.error instanceof ApiError
+                        ? reply.error.message
+                        : 'The reply could not be sent.'}
+                    </p>
+                  ) : null}
+                  {reply.isSuccess && reply.variables?.id === detail.id ? (
+                    <p role="status">Reply sent.</p>
+                  ) : null}
+                </form>
               ) : null}
-              <form
-                className="admin-operation-actions"
-                key={`message-reply-${detail.id}`}
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const data = new FormData(event.currentTarget);
-                  const body = String(data.get('replyBody') ?? '').trim();
-                  const priceText = String(
-                    data.get('quotedPrice') ?? '',
-                  ).trim();
-                  const note = String(data.get('quoteNote') ?? '').trim();
-                  let quotedPriceMinor: number | undefined;
-                  if (priceText) {
-                    if (!/^\d+(?:\.\d{1,2})?$/.test(priceText)) {
-                      setReplyValidationError(
-                        'Enter a non-negative quote with up to two decimal places.',
-                      );
-                      return;
-                    }
-                    const [whole, fraction = ''] = priceText.split('.');
-                    const parsed =
-                      Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
-                    if (!Number.isSafeInteger(parsed)) {
-                      setReplyValidationError('The quote amount is too large.');
-                      return;
-                    }
-                    quotedPriceMinor = parsed;
-                  }
-                  setReplyValidationError('');
-                  if (body) {
-                    reply.mutate({
-                      id: detail.id,
-                      body,
-                      ...(quotedPriceMinor !== undefined
-                        ? { quotedPriceMinor }
-                        : {}),
-                      ...(note ? { note } : {}),
-                    });
-                  }
-                }}
-              >
-                <h3>Reply to customer</h3>
-                <label>
-                  Reply
-                  <textarea
-                    className="input"
-                    name="replyBody"
-                    required
-                    rows={5}
-                    maxLength={10000}
-                  />
-                </label>
-                <label>
-                  Quote amount in GBP (optional)
-                  <input
-                    className="input"
-                    name="quotedPrice"
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                  />
-                </label>
-                <label>
-                  Quote note (optional)
-                  <input className="input" name="quoteNote" maxLength={2000} />
-                </label>
-                <p className="admin-operation-note">
-                  Replies use the configured email service. If delivery is
-                  unavailable, the API reports an error.
-                </p>
-                <Button type="submit" disabled={reply.isPending}>
-                  {reply.isPending ? 'Sending…' : 'Send reply'}
-                </Button>
-                {replyValidationError ? (
-                  <p className="admin-operation-error" role="alert">
-                    {replyValidationError}
-                  </p>
-                ) : null}
-                {reply.isError && reply.variables?.id === detail.id ? (
-                  <p className="admin-operation-error" role="alert">
-                    {reply.error instanceof ApiError
-                      ? reply.error.message
-                      : 'The reply could not be sent.'}
-                  </p>
-                ) : null}
-                {reply.isSuccess && reply.variables?.id === detail.id ? (
-                  <p role="status">Reply sent.</p>
-                ) : null}
-              </form>
               <section
                 className="admin-operation-actions"
                 aria-labelledby="message-status-heading"

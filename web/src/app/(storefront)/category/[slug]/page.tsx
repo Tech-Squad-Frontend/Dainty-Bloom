@@ -4,12 +4,15 @@ import { notFound } from 'next/navigation';
 import { CatalogBrowse } from '@/components/catalog/CatalogBrowse';
 import { ErrorStateCatalog } from '@/components/catalog/CatalogComponents';
 import { CollectionHero } from '@/components/catalog/CollectionHero';
+import { CustomProductRequestForm } from '@/components/contact/Custom3DRequestForm';
 import {
   getPublicCatalog,
   getPublicCategories,
   getPublicCategory,
+  getPublicSettings,
 } from '@/lib/api/server';
 import { getAbsoluteUrl, getConfiguredSiteUrl } from '@/lib/siteUrl';
+import { isCustomRequestOnlyCategory } from '@/lib/customRequestCategories';
 
 export const revalidate = 60;
 
@@ -30,6 +33,14 @@ export async function generateMetadata({
     };
   }
   const siteUrl = getConfiguredSiteUrl();
+  if (isCustomRequestOnlyCategory(result.data.slug)) {
+    const customDescription = `Request a custom ${result.data.name.toLowerCase()} from Dainty Bloom. Share your idea and receive a quote before payment.`;
+    return {
+      title: `${result.data.name} custom request`,
+      description: customDescription,
+      robots: { index: false, follow: true },
+    };
+  }
   const description =
     result.data.description ||
     `Browse ${result.data.name} in the Dainty Bloom shop and explore the available products.`;
@@ -76,11 +87,7 @@ export default async function CategoryPage({
   }
   const catalogQuery = { ...initialQuery, category: slug };
   const queryString = new URLSearchParams(catalogQuery).toString();
-  const [categoryResult, catalogResult, categoriesResult] = await Promise.all([
-    getPublicCategory(slug),
-    getPublicCatalog(`?${queryString}`),
-    getPublicCategories(),
-  ]);
+  const categoryResult = await getPublicCategory(slug);
   if (!categoryResult.data && categoryResult.status === 404) notFound();
   if (!categoryResult.data)
     return (
@@ -88,6 +95,38 @@ export default async function CategoryPage({
         <ErrorStateCatalog title="This category could not be loaded" />
       </div>
     );
+  if (isCustomRequestOnlyCategory(categoryResult.data.slug)) {
+    const settingsResult = await getPublicSettings();
+    return (
+      <div className="commerce-page custom-3d-page">
+        <nav aria-label="Breadcrumb" className="breadcrumbs">
+          <Link href="/">Home</Link>
+          <span aria-hidden="true">/</span>
+          <Link href="/shop">Shop</Link>
+          <span aria-hidden="true">/</span>
+          <span aria-current="page">{categoryResult.data.name}</span>
+        </nav>
+        <header className="custom-3d-page__heading">
+          <span className="eyebrow">Made to order by request</span>
+          <h1>{categoryResult.data.name} custom request</h1>
+          <p>
+            This item is available as a custom request. Tell us what you have
+            in mind and our team will review the details, prepare a custom
+            listing, and send you a quote before you pay.
+          </p>
+        </header>
+        <CustomProductRequestForm
+          maxUploadBytes={settingsResult.data?.artwork.maxBytes ?? null}
+          defaultRequestTitle={`${categoryResult.data.name} custom request`}
+          defaultProductType="Other personalised or custom product"
+        />
+      </div>
+    );
+  }
+  const [catalogResult, categoriesResult] = await Promise.all([
+    getPublicCatalog(`?${queryString}`),
+    getPublicCategories(),
+  ]);
   return (
     <CatalogBrowse
       initialData={catalogResult.data}

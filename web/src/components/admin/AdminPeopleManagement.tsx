@@ -63,7 +63,10 @@ export function AdminCustomersManagement({
         title="Customers"
         description="View customer account details and order history."
       />
-      <form className="admin-filter-bar" onSubmit={submitSearch}>
+      <form
+        className="admin-filter-bar admin-customer-search"
+        onSubmit={submitSearch}
+      >
         <label>
           Search customers
           <input
@@ -75,8 +78,8 @@ export function AdminCustomersManagement({
         </label>
         <Button type="submit">Search</Button>
       </form>
-      <div className="admin-operation-layout">
-        <section className="admin-panel">
+      <div className="admin-operation-layout admin-customer-layout">
+        <section className="admin-panel admin-customer-list-panel">
           <div className="admin-panel-heading">
             <div>
               <h2>Customer list</h2>
@@ -133,7 +136,12 @@ export function AdminCustomersManagement({
                   </tr>
                 ) : items.length ? (
                   items.map((item) => (
-                    <tr key={item._id}>
+                    <tr
+                      key={item._id}
+                      className={
+                        item._id === customerId ? 'is-selected' : undefined
+                      }
+                    >
                       <td>
                         <strong>{item.name}</strong>
                         <small className="admin-operation-subtext">
@@ -202,7 +210,7 @@ export function AdminCustomersManagement({
           ) : null}
         </section>
         <section
-          className="admin-panel admin-operation-detail"
+          className="admin-panel admin-operation-detail admin-customer-detail"
           aria-labelledby="customer-details-heading"
         >
           {detail.isPending && customerId ? (
@@ -220,6 +228,9 @@ export function AdminCustomersManagement({
             <>
               <div className="admin-panel-heading">
                 <div>
+                  <span className="admin-customer-detail__eyebrow">
+                    Customer profile
+                  </span>
                   <h2 id="customer-details-heading">
                     {detail.data.customer.name}
                   </h2>
@@ -231,67 +242,96 @@ export function AdminCustomersManagement({
                 </div>
                 <AdminStatusBadge status={detail.data.customer.accountState} />
               </div>
-              <dl className="admin-operation-metadata">
-                <dt>Phone</dt>
-                <dd>{detail.data.customer.phone || 'Not provided'}</dd>
-                <dt>Email verified</dt>
-                <dd>{detail.data.customer.emailVerified ? 'Yes' : 'No'}</dd>
-                <dt>Customer since</dt>
-                <dd>{formatDate(detail.data.customer.createdAt)}</dd>
-              </dl>
-              <h3>Saved addresses</h3>
-              {detail.data.customer.addresses.length ? (
-                <ul className="admin-operation-list">
-                  {detail.data.customer.addresses.map((address, index) => (
-                    <li key={`${address.label}-${index}`}>
-                      <strong>
-                        {address.label}
-                        {address.isDefault ? ' (default)' : ''}
-                      </strong>
-                      <span className="admin-operation-subtext">
-                        {[
-                          address.line1,
-                          address.line2,
-                          address.city,
-                          address.state,
-                          address.postalCode,
-                          address.country,
-                        ]
-                          .filter(Boolean)
-                          .join(', ')}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>No saved addresses.</p>
-              )}
-              <h3>Order history</h3>
-              {detail.data.orders.length ? (
-                <DataTable
-                  columns={[
-                    { key: 'order', label: 'Order' },
-                    { key: 'date', label: 'Date' },
-                    { key: 'total', label: 'Total' },
-                    { key: 'status', label: 'Status' },
-                    { key: 'payment', label: 'Payment' },
-                  ]}
-                  rows={detail.data.orders.map((order) => ({
-                    id: order._id,
-                    values: {
-                      order: order.orderNumber,
-                      date: formatDate(order.createdAt),
-                      total: formatMoney(order.totalMinor, order.currency),
-                      status: <AdminStatusBadge status={order.status} />,
-                      payment: (
-                        <AdminStatusBadge status={order.payment.status} />
-                      ),
-                    },
-                  }))}
-                />
-              ) : (
-                <p>No orders have been placed.</p>
-              )}
+              <section
+                className="admin-customer-section"
+                aria-labelledby="customer-account-heading"
+              >
+                <h3 id="customer-account-heading">Account details</h3>
+                <dl className="admin-operation-metadata">
+                  <dt>Phone</dt>
+                  <dd>{detail.data.customer.phone || 'Not provided'}</dd>
+                  <dt>Email verified</dt>
+                  <dd>{detail.data.customer.emailVerified ? 'Yes' : 'No'}</dd>
+                  <dt>Customer since</dt>
+                  <dd>{formatDate(detail.data.customer.createdAt)}</dd>
+                </dl>
+              </section>
+              <section
+                className="admin-customer-section"
+                aria-labelledby="customer-addresses-heading"
+              >
+                <div className="admin-customer-section__heading">
+                  <h3 id="customer-addresses-heading">Saved addresses</h3>
+                  <span>{detail.data.customer.addresses.length}</span>
+                </div>
+                {detail.data.customer.addresses.length ? (
+                  <ul className="admin-operation-list admin-customer-addresses">
+                    {detail.data.customer.addresses.map((address, index) => (
+                      <li key={`${address.label}-${index}`}>
+                        <strong>
+                          {address.label}
+                          {address.isDefault ? ' · Default' : ''}
+                        </strong>
+                        <span className="admin-operation-subtext">
+                          {[
+                            address.line1,
+                            address.line2,
+                            address.city,
+                            address.state,
+                            address.postalCode,
+                            address.country,
+                          ]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="admin-customer-section__empty">
+                    No saved addresses yet.
+                  </p>
+                )}
+              </section>
+              <section
+                className="admin-customer-section admin-customer-orders"
+                aria-labelledby="customer-orders-heading"
+              >
+                <div className="admin-customer-section__heading">
+                  <div>
+                    <h3 id="customer-orders-heading">Order history</h3>
+                    <p>Purchases linked to this account</p>
+                  </div>
+                  <span>{detail.data.orders.length}</span>
+                </div>
+                {detail.data.orders.length ? (
+                  <DataTable
+                    columns={[
+                      { key: 'order', label: 'Order' },
+                      { key: 'date', label: 'Date' },
+                      { key: 'total', label: 'Total' },
+                      { key: 'status', label: 'Status' },
+                      { key: 'payment', label: 'Payment' },
+                    ]}
+                    rows={detail.data.orders.map((order) => ({
+                      id: order._id,
+                      values: {
+                        order: order.orderNumber,
+                        date: formatDate(order.createdAt),
+                        total: formatMoney(order.totalMinor, order.currency),
+                        status: <AdminStatusBadge status={order.status} />,
+                        payment: (
+                          <AdminStatusBadge status={order.payment.status} />
+                        ),
+                      },
+                    }))}
+                  />
+                ) : (
+                  <p className="admin-customer-section__empty">
+                    No orders have been placed yet.
+                  </p>
+                )}
+              </section>
             </>
           ) : (
             <p role="status">Select a customer to view their details.</p>

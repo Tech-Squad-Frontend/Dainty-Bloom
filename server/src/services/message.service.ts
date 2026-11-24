@@ -25,6 +25,7 @@ import { AppError } from '../utils/AppError';
 import { formatMoney, STORE_CURRENCY } from '../utils/currency';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit.service';
+import { sendSafely } from './email.service';
 import { deliverContactEnquiryEmail } from './contactEmail.service';
 import { getMailer } from './mailer';
 import { safeMailErrorCode } from './mailer/smtpTransport';
@@ -236,6 +237,20 @@ export async function createContactMessage(
       text: acknowledgement.text,
       html: `<p>${escapeHtml(acknowledgement.text)}</p>`,
     });
+  } else if (message.type === 'custom_3d_request') {
+    const settings = await SiteSettings.findOne({ key: 'default' })
+      .select('contactEmail')
+      .lean();
+    const adminEmail = settings?.contactEmail?.trim();
+    if (adminEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+      const reviewUrl = new URL('/admin/messages', env.CLIENT_URL).toString();
+      await sendSafely({
+        to: adminEmail,
+        subject: `New custom product request — ${message.subject}`,
+        text: `${message.name} sent a custom product request.\n\n${message.body}\n\nReview it in the admin messages area: ${reviewUrl}`,
+        html: `<p>${escapeHtml(message.name)} sent a custom product request.</p><p>${escapeHtml(message.body).replace(/\\r?\\n/g, '<br>')}</p><p><a href="${escapeHtml(reviewUrl)}">Review the request</a></p>`,
+      });
+    }
   }
   return genericMessageSuccess();
 }
@@ -518,6 +533,7 @@ export async function transitionCustomRequestStatus(
       accepted: ['offer_created'],
       declined: [],
       offer_created: ['completed'],
+      changes_requested: ['under_review'],
       completed: [],
     };
   if (!allowedTransitions[currentStatus]?.includes(input.status)) {
@@ -536,10 +552,12 @@ export async function transitionCustomRequestStatus(
   }
 
   request.customRequestStatus = input.status;
-  if (input.status !== 'under_review') {
+  {
     const responseMessage =
       input.message?.trim() ||
-      'Your custom product request has been accepted. We will prepare a custom offer in a later step.';
+      (input.status === 'under_review'
+        ? 'We are reviewing your custom product request.'
+        : 'Your custom product request has been accepted. We will prepare a custom offer shortly.');
     request.customRequestResponses.push({
       status: input.status,
       message: responseMessage,
@@ -557,7 +575,7 @@ export async function transitionCustomRequestStatus(
     metadata: { from: currentStatus, to: input.status },
   });
 
-  if (input.status !== 'under_review') {
+  {
     const response = request.customRequestResponses.at(-1);
     if (!response) {
       throw new AppError(
@@ -570,10 +588,69 @@ export async function transitionCustomRequestStatus(
       request.email,
       input.status,
       response.message,
+      request.customerId?.toString(),
     );
     await request.save();
   }
   return getContactMessage(id);
+}
+
+export async function customerRequestsCustomOfferChanges(
+  id: string,
+  message: string,
+  customer: IUser,
+) {
+  const request = await Message.findOne({
+    _id: id,
+    type: 'custom_3d_request',
+    customerId: customer._id,
+  });
+  if (!request) {
+    throw new AppError('Custom request not found', 404, 'CUSTOM_REQUEST_NOT_FOUND');
+  }
+  if (request.customRequestStatus !== 'offer_created') {
+    throw new AppError('There is no offer awaiting your review', 409, 'CUSTOM_OFFER_NOT_REVIEWABLE');
+  }
+  const offer = await getCustomerCustomOfferForRequest(id, customer);
+  if (!offer || offer.status !== 'available') {
+    throw new AppError('This offer can no longer be changed', 409, 'CUSTOM_OFFER_NOT_EDITABLE');
+  }
+
+  request.customRequestStatus = 'changes_requested';
+  request.status = 'new';
+  request.customRequestResponses.push({
+    status: 'changes_requested',
+    message: message.trim(),
+    author: customer._id,
+    notificationStatus: 'failed',
+    createdAt: new Date(),
+  });
+  await request.save();
+  await logAuditEvent({
+    actor: customer,
+    action: 'custom_offer.changes_requested',
+    targetType: 'Message',
+    targetId: id,
+    metadata: { messageLength: message.trim().length },
+  });
+
+  const settings = await SiteSettings.findOne({ key: 'default' })
+    .select('contactEmail storeName')
+    .lean();
+  const adminEmail = settings?.contactEmail?.trim();
+  if (adminEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+    request.customRequestResponses.at(-1)!.notificationStatus =
+      (await sendSafely({
+        to: adminEmail,
+        subject: `Custom offer changes requested — ${request.subject}`,
+        text: `${customer.name} requested changes to a private custom offer.\n\n${message.trim()}\n\nReview the request in the Dainty Bloom admin messages area.`,
+        html: `<p>${escapeHtml(customer.name)} requested changes to a private custom offer.</p><p>${escapeHtml(message.trim()).replace(/\\r?\\n/g, '<br>')}</p><p>Review the request in the Dainty Bloom admin messages area.</p>`,
+      }))
+        ? 'sent'
+        : 'failed';
+    await request.save();
+  }
+  return getCustomerCustomRequest(id, customer);
 }
 
 export async function getCustomerCustomRequests(customer: IUser) {
@@ -623,9 +700,12 @@ export async function getCustomerCustomRequest(id: string, customer: IUser) {
       : null,
     User.find({
       _id: {
-        $in: (request.customRequestResponses ?? []).map(
-          (response) => response.author,
-        ),
+        $in: [
+          ...(request.customRequestResponses ?? []).map(
+            (response) => response.author,
+          ),
+          ...(request.replies ?? []).map((reply) => reply.author),
+        ],
       },
     })
       .select('name')
@@ -661,6 +741,12 @@ export async function getCustomerCustomRequest(id: string, customer: IUser) {
       authorName: authorNames.get(response.author.toString()) ?? 'Dainty Bloom',
       notificationStatus: response.notificationStatus,
       createdAt: response.createdAt,
+    })),
+    replies: (request.replies ?? []).map((reply) => ({
+      id: reply._id?.toString() ?? null,
+      authorName: authorNames.get(reply.author.toString()) ?? 'Dainty Bloom',
+      body: reply.body,
+      createdAt: reply.createdAt,
     })),
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,
@@ -745,6 +831,13 @@ export async function replyToContactMessage(
     );
   }
   message.replies.push({ author: actor._id, body, createdAt: new Date() });
+  const isCustomRequestFollowUp =
+    message.type === 'custom_3d_request' &&
+    message.customRequestStatus === 'changes_requested';
+  if (isCustomRequestFollowUp) {
+    message.customRequestStatus = 'offer_created';
+    message.status = 'quoted';
+  }
   if (input.quotedPriceMinor !== undefined) {
     message.quotedPriceMinor = input.quotedPriceMinor;
     message.quotedPriceCurrency = STORE_CURRENCY;
@@ -773,7 +866,7 @@ export async function replyToContactMessage(
           input.quotedPriceMinor,
           settings?.currency ?? env.DEFAULT_CURRENCY,
         );
-  await sendSafeEmail({
+  const responseEmail: TransactionalEmail = {
     to: message.email,
     subject: `Re: ${message.subject}`,
     text: [
@@ -794,7 +887,29 @@ export async function replyToContactMessage(
           ]
         : []),
     ].join(''),
-  });
+  };
+  if (message.type === 'custom_3d_request' && message.customerId) {
+    const customer = await User.findById(message.customerId)
+      .select('emailVerified')
+      .lean();
+    const emailStatus: CustomRequestNotificationStatus = !customer?.emailVerified
+      ? 'not_verified'
+      : (await sendSafely(responseEmail))
+        ? 'sent'
+        : 'failed';
+    if (isCustomRequestFollowUp) {
+      message.customRequestResponses.push({
+        status: 'offer_created',
+        message: body,
+        author: actor._id,
+        notificationStatus: emailStatus,
+        createdAt: new Date(),
+      });
+      await message.save();
+    }
+  } else {
+    await sendSafeEmail(responseEmail);
+  }
   return getContactMessage(id);
 }
 
@@ -935,7 +1050,14 @@ async function sendCustomRequestNotification(
   email: string,
   status: CustomRequestResponseStatus,
   message: string,
+  customerId?: string,
 ): Promise<CustomRequestNotificationStatus> {
+  const customer = customerId
+    ? await User.findOne({ _id: customerId, role: 'customer' })
+        .select('emailVerified')
+        .lean()
+    : null;
+  if (!customer?.emailVerified) return 'not_verified';
   try {
     await getMailer().sendTransactionalEmail({
       to: email,

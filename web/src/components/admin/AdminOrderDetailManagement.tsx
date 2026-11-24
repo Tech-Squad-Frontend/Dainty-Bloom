@@ -127,7 +127,15 @@ export function AdminOrderDetailManagement({ orderId }: { orderId: string }) {
           </ErrorState>
         </section>
       ) : order ? (
-        <>
+        <div className="admin-order-detail-page">
+          <section
+            className="admin-order-detail-block"
+            aria-labelledby="order-information-heading"
+          >
+            <div className="admin-order-detail-block__heading">
+              <h2 id="order-information-heading">Order information</h2>
+              <p>Customer, payment, delivery, and shipment details.</p>
+            </div>
           <div className="admin-order-detail-grid">
             <section className="admin-panel admin-order-detail-card">
               <div className="admin-panel-heading">
@@ -142,12 +150,6 @@ export function AdminOrderDetailManagement({ orderId }: { orderId: string }) {
                 <div>
                   <dt>Order date</dt>
                   <dd>{formatDate(order.createdAt)}</dd>
-                </div>
-                <div>
-                  <dt>Order status</dt>
-                  <dd>
-                    <AdminStatusBadge status={order.status} />
-                  </dd>
                 </div>
                 <div>
                   <dt>Fulfilment</dt>
@@ -236,9 +238,15 @@ export function AdminOrderDetailManagement({ orderId }: { orderId: string }) {
               )}
             </section>
           </div>
+          </section>
 
           <section className="admin-panel admin-order-detail-section">
-            <h2>Items</h2>
+            <div className="admin-order-section-heading">
+              <div>
+                <h2>Items</h2>
+                <p>{order.items.length} item{order.items.length === 1 ? '' : 's'} in this order</p>
+              </div>
+            </div>
             <div className="admin-order-items">
               {order.items.map((item) => (
                 <article className="admin-order-item" key={item.id}>
@@ -324,7 +332,15 @@ export function AdminOrderDetailManagement({ orderId }: { orderId: string }) {
             </dl>
           </section>
 
-          <div className="admin-order-detail-grid">
+          <section
+            className="admin-order-detail-block"
+            aria-labelledby="order-activity-heading"
+          >
+            <div className="admin-order-detail-block__heading">
+              <h2 id="order-activity-heading">Order activity</h2>
+              <p>Status changes, staff notes, and refunds.</p>
+            </div>
+          <div className="admin-order-detail-grid admin-order-detail-grid--activity">
             <section className="admin-panel admin-order-detail-card">
               <h2>Order history</h2>
               {order.statusHistory.length ? (
@@ -384,11 +400,15 @@ export function AdminOrderDetailManagement({ orderId }: { orderId: string }) {
               )}
             </section>
           </div>
+          </section>
 
           {can('orders:update_status') || can('orders:refund') ? (
-            <section className="admin-panel">
+            <section className="admin-panel admin-order-actions-panel">
               <div className="admin-panel-heading">
-                <h2>Order actions</h2>
+                <div>
+                  <h2 id="order-actions-title">Manage order</h2>
+                  <p>Choose an action below. Destructive actions are separated.</p>
+                </div>
                 {can('orders:update_status') && order.status === 'shipped' ? (
                   <Button
                     disabled={completeOrder.isPending}
@@ -435,7 +455,7 @@ export function AdminOrderDetailManagement({ orderId }: { orderId: string }) {
             This will mark the order completed. Confirm that fulfilment is
             finished.
           </AdminConfirmDialog>
-        </>
+        </div>
       ) : null}
     </>
   );

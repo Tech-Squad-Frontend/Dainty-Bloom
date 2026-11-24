@@ -424,6 +424,14 @@ async function processPrivateOfferPaymentFulfillment(
       return;
     }
 
+    await Message.updateOne(
+      {
+        _id: offer.request,
+        customRequestStatus: { $in: ['offer_created', 'completed'] },
+      },
+      { $set: { customRequestStatus: 'completed', status: 'resolved' } },
+    );
+
     if (!task.offerCompletedAt) {
       await completeFulfillmentStep(
         task._id,

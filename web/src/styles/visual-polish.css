@@ -90,10 +90,10 @@
   background:
     radial-gradient(
       circle at 78% 24%,
-      rgb(168 230 207 / 28%),
+      rgb(242 107 33 / 16%),
       transparent 22rem
     ),
-    linear-gradient(115deg, var(--lavender-tint), var(--page) 70%);
+    linear-gradient(115deg, var(--brand-orange), var(--brand-cobalt) 58%, var(--brand-olive));
 }
 
 .home-hero__inner {
@@ -120,7 +120,7 @@
   width: 9rem;
   height: 9rem;
   border-radius: 50%;
-  background: rgb(177 162 243 / 17%);
+  background: rgb(242 107 33 / 16%);
   filter: blur(1px);
 }
 
@@ -134,7 +134,7 @@
   left: -1rem;
   width: 12rem;
   height: 12rem;
-  background: rgb(168 230 207 / 22%);
+  background: rgb(8 79 127 / 12%);
 }
 
 .product-line-card h3 {
