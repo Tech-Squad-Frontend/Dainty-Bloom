@@ -4,7 +4,15 @@ import path from 'node:path';
 import { app } from '../app';
 
 interface RouteProtection {
-  kind: 'auth' | 'permission' | 'role' | 'csrf' | 'rateLimit';
+  kind:
+    | 'auth'
+    | 'permission'
+    | 'role'
+    | 'csrf'
+    | 'rateLimit'
+    | 'validation'
+    | 'ownership'
+    | 'upload';
   value?: string;
 }
 

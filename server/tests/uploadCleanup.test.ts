@@ -440,6 +440,8 @@ async function createArtwork(
     height: 1,
     checksum: createHash('sha256').update(PNG).digest('hex'),
     reviewStatus: 'pending',
+    scanStatus: 'clean',
+    scannedAt: new Date(),
     createdAt: overrides.createdAt,
     updatedAt: overrides.createdAt,
   });

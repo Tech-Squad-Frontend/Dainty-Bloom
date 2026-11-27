@@ -10,7 +10,7 @@ export function singleMemoryUpload(
   maxBytes: (req: Express.Request) => Promise<number>,
   maxFields = 10,
 ): RequestHandler {
-  return (req, res, next): void => {
+  const middleware: RequestHandler = (req, res, next): void => {
     void maxBytes(req)
       .then((limit) => {
         multer({
@@ -37,13 +37,16 @@ export function singleMemoryUpload(
       })
       .catch(next);
   };
+  return Object.assign(middleware, {
+    routeProtection: { kind: 'upload' as const, value: 'multipart-memory' },
+  });
 }
 
 export function messageMemoryUpload(
   maxBytes: (req: Express.Request) => Promise<number>,
   maxFields = 12,
 ): RequestHandler {
-  return (req, res, next): void => {
+  const middleware: RequestHandler = (req, res, next): void => {
     void maxBytes(req)
       .then((limit) => {
         multer({
@@ -77,6 +80,9 @@ export function messageMemoryUpload(
       })
       .catch(next);
   };
+  return Object.assign(middleware, {
+    routeProtection: { kind: 'upload' as const, value: 'multipart-memory' },
+  });
 }
 
 export async function memoryUploadLimit(): Promise<number> {

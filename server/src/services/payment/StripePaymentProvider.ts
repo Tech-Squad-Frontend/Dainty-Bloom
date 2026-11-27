@@ -5,6 +5,7 @@ import { AppError } from '../../utils/AppError';
 import { STORE_CURRENCY } from '../../utils/currency';
 import { logger } from '../../utils/logger';
 import type { PaymentProvider } from './PaymentProvider';
+import { assertPersistedOrderTotal } from './paymentInvariants';
 
 export class StripePaymentProvider implements PaymentProvider {
   readonly name = 'stripe';
@@ -43,26 +44,7 @@ export class StripePaymentProvider implements PaymentProvider {
       }
     }
     const stripe = getStripeClient();
-    const expectedTotal = order.customOffer
-      ? order.totalMinor
-      : order.items.reduce(
-          (sum, item) => sum + item.unitPriceMinor * item.quantity,
-          0,
-        ) -
-        order.discountMinor +
-        order.shippingMinor +
-        order.taxMinor;
-    if (expectedTotal !== order.totalMinor || expectedTotal <= 0) {
-      logger.error(
-        { orderId: order._id.toString() },
-        'Persisted order amounts do not match Stripe Checkout total',
-      );
-      throw new AppError(
-        'Stored order totals do not reconcile',
-        409,
-        'PAYMENT_TOTAL_MISMATCH',
-      );
-    }
+    assertPersistedOrderTotal(order);
     const currency = order.currency.toLowerCase();
     const metadata = {
       orderId: order._id.toString(),

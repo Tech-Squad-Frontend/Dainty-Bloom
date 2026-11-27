@@ -1,14 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useId, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Suspense, useId, useState, type FormEvent } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button, Input } from '@/components/ui';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { ApiError } from '@/lib/api/client';
+import { api, ApiError } from '@/lib/api/client';
 
 const adminLoginSchema = z.object({
   email: z.string().trim().email('Enter a valid email address.'),
@@ -33,9 +34,15 @@ export function AdminLoginForm() {
 
 function AdminLoginFormContent() {
   const { login, user } = useAuth();
+  const router = useRouter();
   const errorId = useId();
   const [visible, setVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [challengeId, setChallengeId] = useState('');
+  const [challengePurpose, setChallengePurpose] = useState<'login' | 'setup'>();
+  const [mfaCode, setMfaCode] = useState('');
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
+  const [mfaSecret, setMfaSecret] = useState('');
   const {
     register,
     handleSubmit,
@@ -45,7 +52,16 @@ function AdminLoginFormContent() {
   const submit = handleSubmit(async (values) => {
     setErrorMessage('');
     try {
-      await login({ ...values, portal: 'admin' });
+      const result = await login({ ...values, portal: 'admin' });
+      if (result.mfaRequired && result.challenge) {
+        setChallengeId(result.challenge.id);
+        setChallengePurpose(result.challenge.purpose);
+        if (result.challenge.purpose === 'setup') {
+          const enrollment = await api.startMfaEnrollment(result.challenge.id);
+          setQrCodeDataUrl(enrollment.qrCodeDataUrl);
+          setMfaSecret(enrollment.secret);
+        }
+      }
     } catch (error) {
       setErrorMessage(
         error instanceof ApiError
@@ -60,6 +76,60 @@ function AdminLoginFormContent() {
       <p className="auth-loading" role="status">
         Checking staff access…
       </p>
+    );
+  }
+
+  if (challengeId) {
+    const submitMfa = async (event: FormEvent) => {
+      event.preventDefault();
+      setErrorMessage('');
+      try {
+        if (challengePurpose === 'setup') {
+          await api.confirmMfaEnrollment(challengeId, mfaCode);
+        } else {
+          await api.verifyMfa(challengeId, mfaCode);
+        }
+        router.replace('/admin');
+      } catch (error) {
+        setErrorMessage(
+          error instanceof ApiError
+            ? error.message
+            : 'MFA verification could not be completed.',
+        );
+      }
+    };
+    return (
+      <section className="auth-form-content">
+        <p className="auth-kicker">MFA verification</p>
+        <h1>{challengePurpose === 'setup' ? 'Set up an authenticator' : 'Enter a verification code'}</h1>
+        {challengePurpose === 'setup' ? (
+          <>
+            {qrCodeDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={qrCodeDataUrl} alt="Dainty Bloom authenticator QR code" />
+            ) : null}
+            <p className="auth-intro">
+              Scan the QR code or enter this setup key: <strong>{mfaSecret}</strong>
+            </p>
+          </>
+        ) : (
+          <p className="auth-intro">Enter the 6-digit code from your authenticator app or use a recovery code.</p>
+        )}
+        {errorMessage ? (
+          <div className="auth-alert" id={errorId} role="alert">
+            {errorMessage}
+          </div>
+        ) : null}
+        <form className="auth-form" onSubmit={submitMfa}>
+          <Input
+            label="Verification code"
+            value={mfaCode}
+            onChange={(event) => setMfaCode(event.target.value)}
+            autoComplete="one-time-code"
+          />
+          <Button type="submit">Continue</Button>
+        </form>
+      </section>
     );
   }
 

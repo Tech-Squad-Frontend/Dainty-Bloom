@@ -12,11 +12,25 @@ process.env.COOKIE_SECRET = 'test-cookie-signing-secret-with-at-least-32-chars';
 process.env.COOKIE_SAMESITE = 'lax';
 process.env.BCRYPT_COST = '10';
 process.env.PASSWORD_RESET_TTL = '15m';
+process.env.EMAIL_VERIFICATION_TTL = '24h';
+process.env.MFA_ENCRYPTION_KEY =
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+process.env.MFA_CHALLENGE_TTL = '10m';
+process.env.DATA_ENCRYPTION_KEY =
+  'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd';
+process.env.DATA_ENCRYPTION_PREVIOUS_KEYS = '';
+process.env.PRIVACY_EXPORT_TTL = '15m';
+process.env.ACCOUNT_DELETION_GRACE_DAYS = '30';
+process.env.PASSWORD_RESET_RETENTION_DAYS = '30';
+process.env.GUEST_SESSION_RETENTION_DAYS = '30';
+process.env.UNATTACHED_ARTWORK_RETENTION_DAYS = '1';
+process.env.AUDIT_LOG_RETENTION_DAYS = '365';
 process.env.UPLOAD_MAX_BYTES = '10485760';
 process.env.STORAGE_DRIVER = 'local';
 process.env.API_PUBLIC_URL = 'http://localhost:3000';
 process.env.UPLOAD_SIGNING_SECRET =
   'test-upload-signing-secret-with-at-least-32-characters';
+process.env.CLAMAV_HOST = '127.0.0.1';
 process.env.CONTACT_RECIPIENT_EMAIL = 'owner@example.test';
 process.env.SMTP_HOST = 'smtp.example.test';
 process.env.SMTP_PORT = '587';

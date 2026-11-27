@@ -21,7 +21,8 @@
     "settings:profile": "tsx src/scripts/applyBusinessProfile.ts",
     "currency:migrate:usd-to-gbp": "tsx src/scripts/migrateCurrencyUsdToGbp.ts",
     "lint": "eslint .",
-    "test": "vitest run tests"
+    "test": "vitest run tests",
+    "test:security": "vitest run tests/securityArchitecture.test.ts tests/mongoConnection.test.ts tests/webSecurity.test.ts tests/stripeWebhookSignature.test.ts tests/artworkFileType.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -31,7 +32,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
-    "fast-xml-parser": "^5.11.2",
+    "fast-xml-parser": "^5.12.1",
     "file-type": "^22.2.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.3",
@@ -39,7 +40,9 @@
     "morgan": "^1.10.0",
     "multer": "^2.5.0",
     "nodemailer": "^10.2.1",
+    "otpauth": "^9.6.0",
     "pino": "^9.6.0",
+    "qrcode": "^1.5.4",
     "sharp": "^0.35.5",
     "stripe": "^23.0.1",
     "zod": "^4.6.7"
@@ -53,6 +56,7 @@
     "@types/morgan": "^1.9.9",
     "@types/multer": "^2.3.0",
     "@types/node": "^22.13.4",
+    "@types/qrcode": "^1.5.6",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.19.0",
     "mongodb-memory-server": "^11.3.0",

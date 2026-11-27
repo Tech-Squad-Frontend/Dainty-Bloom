@@ -81,8 +81,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (credentials: AuthCredentials) => {
       const result = await api.login(credentials);
-      queryClient.setQueryData(['auth', 'me'], result);
-      await refreshCustomerData();
+      if (result.user && result.permissions) {
+        queryClient.setQueryData(['auth', 'me'], result);
+        await refreshCustomerData();
+      }
       return result;
     },
     [queryClient, refreshCustomerData],

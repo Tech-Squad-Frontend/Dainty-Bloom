@@ -56,7 +56,7 @@ const loadAuthenticatedUser: RequestHandler = asyncHandler(
       throw new AppError('Authentication required', 401, 'UNAUTHENTICATED');
     }
 
-    const user = await User.findById(payload.sub);
+    const user = await User.findById(payload.sub).select('+recentMfaExpiresAt');
     if (
       !user ||
       user.accountState !== 'active' ||
@@ -85,7 +85,7 @@ export const optionalAuth: RequestHandler = asyncHandler(
 
     const payload = verifyAuthToken(token, 'access');
     if (mongoose.isValidObjectId(payload.sub)) {
-      const user = await User.findById(payload.sub);
+      const user = await User.findById(payload.sub).select('+recentMfaExpiresAt');
       if (
         user &&
         user.accountState === 'active' &&

@@ -25,6 +25,7 @@ import type {
   AdminFaq,
   AdminSearchResult,
   AuthResponse,
+  AuthUser,
   AuthCredentials,
   ProfileUpdateInput,
   CartSummary,
@@ -368,6 +369,32 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 let refreshInFlight: Promise<void> | null = null;
+let csrfToken: string | null = null;
+let csrfTokenRequest: Promise<string> | null = null;
+
+async function getCsrfToken(): Promise<string> {
+  if (csrfToken) return csrfToken;
+  if (csrfTokenRequest) return csrfTokenRequest;
+  csrfTokenRequest = fetch('/api/auth/csrf', {
+    method: 'GET',
+    credentials: 'include',
+  })
+    .then(async (response) => {
+      if (!response.ok) throw new ApiError('CSRF setup failed', 'CSRF_FAILED', null, response.status);
+      const envelope = (await response.json()) as {
+        success?: boolean;
+        data?: { csrfToken?: string };
+      };
+      const token = envelope.data?.csrfToken;
+      if (!token) throw new ApiError('CSRF setup failed', 'CSRF_FAILED', null, 200);
+      csrfToken = token;
+      return token;
+    })
+    .finally(() => {
+      csrfTokenRequest = null;
+    });
+  return csrfTokenRequest;
+}
 
 function isFormData(value: unknown): value is FormData {
   return typeof FormData !== 'undefined' && value instanceof FormData;
@@ -450,6 +477,8 @@ async function request<T>(
     headers.set('Content-Type', 'application/json');
   if (MUTATING_METHODS.has(method)) {
     headers.set('X-Requested-With', 'dainty-bloom');
+    const token = await getCsrfToken();
+    headers.set('X-CSRF-Token', token);
   }
 
   let response: Response;
@@ -825,7 +854,7 @@ export const api = {
   },
   me: () => apiRequest<AuthResponse>('/auth/me'),
   updateProfile: (input: ProfileUpdateInput) =>
-    apiRequest<{ user: AuthResponse['user'] }>('/auth/me', {
+    apiRequest<{ user: AuthUser }>('/auth/me', {
       method: 'PATCH',
       body: input,
     }),
@@ -834,6 +863,35 @@ export const api = {
       method: 'POST',
       body: input,
       retryAuth: false,
+    }),
+  verifyMfa: (challengeId: string, code: string) =>
+    apiRequest<AuthResponse>('/auth/mfa/verify', {
+      method: 'POST',
+      body: { challengeId, code },
+      retryAuth: false,
+    }),
+  startMfaEnrollment: (challengeId?: string) =>
+    apiRequest<{ qrCodeDataUrl: string; secret: string }>(
+      '/auth/mfa/enroll/start',
+      {
+        method: 'POST',
+        body: { challengeId },
+        retryAuth: false,
+      },
+    ),
+  confirmMfaEnrollment: (challengeId: string | undefined, code: string) =>
+    apiRequest<{
+      recoveryCodes: string[];
+      user: AuthUser;
+    }>('/auth/mfa/enroll/confirm', {
+      method: 'POST',
+      body: { challengeId, code },
+      retryAuth: false,
+    }),
+  disableMfa: (code: string) =>
+    apiRequest<{ message: string }>('/auth/mfa/disable', {
+      method: 'POST',
+      body: { code },
     }),
   adminCategories: async (): Promise<AdminCategory[]> => {
     const data = await apiRequest<{ categories: AdminCategory[] }>(
@@ -1251,6 +1309,42 @@ export const api = {
     apiRequest<{ message: string }>('/auth/reset-password', {
       method: 'POST',
       body: { token, password },
+      retryAuth: false,
+    }),
+  verifyEmail: (token: string) =>
+    apiRequest<{ message: string }>('/auth/verify-email', {
+      method: 'POST',
+      body: { token },
+      retryAuth: false,
+    }),
+  requestEmailVerification: (email: string) =>
+    apiRequest<{ message: string }>('/auth/verify-email/request', {
+      method: 'POST',
+      body: { email },
+      retryAuth: false,
+    }),
+  requestDataExport: () =>
+    apiRequest<{
+      id: string;
+      expiresAt: string;
+      downloadUrl: string;
+    }>('/privacy/data-export', {
+      method: 'POST',
+      retryAuth: false,
+    }),
+  requestAccountDeletion: (password: string) =>
+    apiRequest<{ scheduledAt: string; message: string }>(
+      '/privacy/delete-account/request',
+      {
+        method: 'POST',
+        body: { password },
+        retryAuth: false,
+      },
+    ),
+  cancelAccountDeletion: (email: string, password: string) =>
+    apiRequest<{ message: string }>('/privacy/delete-account/cancel', {
+      method: 'POST',
+      body: { email, password },
       retryAuth: false,
     }),
   subscribe: (input: NewsletterInput) =>

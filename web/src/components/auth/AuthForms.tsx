@@ -101,9 +101,11 @@ function LoginFormContent() {
     setServerError('');
     try {
       const result = await login({ ...values, portal: 'customer' });
-      router.replace(
-        result.user.role === 'customer' ? nextPath ?? '/' : '/admin',
-      );
+      if (result.user) {
+        router.replace(
+          result.user.role === 'customer' ? nextPath ?? '/' : '/admin',
+        );
+      }
     } catch (error) {
       setServerError(getAuthErrorMessage(error));
     }

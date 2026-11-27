@@ -58,8 +58,15 @@ no safe default; optional settings are shown with their defaults.
 | `COOKIE_SAMESITE`, `COOKIE_DOMAIN`                                                         | Cookie policy; default SameSite `lax`; domain optional                                    |
 | `TRUST_PROXY`                                                                              | Express proxy trust setting (`false`, `true`, hop count, or proxy value); default `false` |
 | `BCRYPT_COST`, `PASSWORD_RESET_TTL`                                                        | Password hash cost (default `12`) and reset lifetime (default `15m`)                      |
+| `EMAIL_VERIFICATION_TTL`, `MFA_ENCRYPTION_KEY`, `MFA_CHALLENGE_TTL`                        | Email verification lifetime, AES MFA secret key, and MFA challenge lifetime                |
+| `DATA_ENCRYPTION_KEY`, `DATA_ENCRYPTION_PREVIOUS_KEYS`                                      | 32-byte AES field/export key and comma-separated previous rotation keys                    |
+| `PRIVACY_EXPORT_TTL`, `ACCOUNT_DELETION_GRACE_DAYS`                                        | Export lifetime and staged account-deletion grace period                                   |
+| `PASSWORD_RESET_RETENTION_DAYS`, `GUEST_SESSION_RETENTION_DAYS`                            | Password-reset and guest-session retention policies                                        |
+| `UNATTACHED_ARTWORK_RETENTION_DAYS`, `AUDIT_LOG_RETENTION_DAYS`                            | Unattached artwork cleanup and audit-retention target                                      |
 | `CART_MAX_QUANTITY`                                                                        | Per-line cart cap; default `99`                                                           |
 | `UPLOAD_MAX_BYTES`, `PRODUCT_IMAGE_MAX_BYTES`                                              | Private artwork / product image size limits; defaults `10485760`                          |
+| `CLAMAV_HOST`, `CLAMAV_PORT`, `CLAMAV_TIMEOUT_MS`                                           | ClamAV INSTREAM scanner host, port, and timeout; production requires host                  |
+| `MAX_CONCURRENT_ARTWORK_UPLOADS`, `ARTWORK_PROCESSING_TIMEOUT_MS`, `ARTWORK_MAX_PIXELS`      | Artwork concurrency, processing timeout, and decompression-pixel limits                   |
 | `STORAGE_DRIVER`, `STORAGE_PRIVATE_DIR`                                                    | Artwork backend (`local` or `cloudinary`) and local private path; defaults to `local`     |
 | `UPLOAD_SIGNING_SECRET`                                                                    | Required signing secret, at least 32 characters                                           |
 | `PAYMENT_PROVIDER`                                                                         | `manual` (default) or `stripe`                                                            |
@@ -90,6 +97,124 @@ after a recorded failure reuses the saved enquiry. The `sent` status means the
 SMTP server accepted the message, not that it reached the recipient's inbox.
 When using Gmail SMTP, the API requires `SMTP_FROM` to match
 `info@daintybloome.com`.
+
+### Artwork malware scanning
+
+Uploads are scanned with ClamAV before storage or staff processing. `CLAMAV_HOST`,
+`CLAMAV_PORT`, `CLAMAV_TIMEOUT_MS`, `MAX_CONCURRENT_ARTWORK_UPLOADS`,
+`ARTWORK_PROCESSING_TIMEOUT_MS`, and `ARTWORK_MAX_PIXELS` control the scanner and
+resource boundaries. Production requires `CLAMAV_HOST`; scanner outages and
+timeouts reject uploads rather than marking them safe.
+
+Artwork records have `scanStatus` values for `pending`, `scanning`, `clean`,
+`infected`, `failed`, and `legacy_unverified`. Existing records remain
+`legacy_unverified` until a separately reviewed scan migration marks them
+clean; they are not silently promoted by this implementation. Customer,
+staff, preview, and signed-download access rejects non-clean records.
+
+The application performs signature, XML, size, and PDF structural checks, but
+these checks do not replace malware scanning. Production should run ClamAV
+INSTREAM in a restricted network segment, with filesystem and memory limits.
+If ClamAV is not available on a host, keep uploads disabled or return a
+503 upload failure until a maintained equivalent scanner is configured.
+Customer PDFs are not rendered or executed by the application. PDFs containing
+JavaScript, OpenAction, embedded files, launch actions, RichMedia, XFA, or
+resource-excessive object/stream counts are rejected.
+
+### Web security headers and CSRF
+
+The Express API sends explicit CSP, frame-ancestor, MIME-sniffing,
+referrer, permissions, and cross-origin isolation headers. Production
+HSTS is enabled only by the HTTPS Next.js deployment and is not enabled
+in development. The Next.js storefront uses an enforced production CSP
+and report-only development CSP.
+
+The CSP permits the application's own scripts/styles, Next.js inline
+hydration bootstrap, bundled Google-font output, Cloudinary images,
+Stripe Checkout navigation, and same-origin API traffic. It does not permit
+wildcard script or connection origins. Next.js development retains
+`unsafe-eval` only for the development runtime; production does not.
+
+State-changing API requests retain the `X-Requested-With` header and now
+receive a signed double-submit CSRF token from `GET /api/auth/csrf`.
+Cross-origin `Origin` or `Referer` values are rejected. Stripe webhooks
+remain outside normal CSRF middleware and retain raw-body signature
+verification.
+
+### Production database security
+
+Production startup requires an authenticated MongoDB URI and explicit database
+name. Use `mongodb+srv://` or `mongodb://...?tls=true`; TLS certificate
+validation bypass options are rejected. The application refuses to start if
+credentials or TLS are missing and never logs the connection string.
+
+MongoDB network restrictions, provider encryption at rest, backup encryption,
+and backup access controls require hosting configuration. Use the dedicated
+checklist at `../docs/infrastructure-security-checklist.md`. Normal application
+credentials must not use database-administrator roles.
+
+The environment loader validates `TRUST_PROXY`; wildcard and `true` proxy trust
+are rejected. Use `false` for direct internet access, an explicit hop count
+for a known proxy chain, or explicit trusted proxy addresses. At the reverse
+proxy, strip untrusted forwarding headers and append only trusted values.
+
+### Customer privacy and retention
+
+Customers can request an encrypted JSON data export and schedule staged account
+deletion from their profile. Export files use AES-256-GCM application
+encryption and download URLs include a random bearer token stored as a SHA-256
+hash. Export records expire according to `PRIVACY_EXPORT_TTL`; download access
+requires the authenticated owner and exact token.
+
+Account deletion uses a configurable grace period. The first request revokes
+the user's token version and blocks login until the request is cancelled or
+the grace period completes. Completion removes customer carts, wishlists,
+newsletter records, customer profile identity and addresses, private artwork
+not still needed for active orders, and sensitive custom-request content.
+Orders, payment reconciliation, refund and fulfillment audit records are
+preserved. Terminal orders retain their user reference and financial snapshots
+for accounting/reconciliation. Review or legal-retention requirements should
+be implemented by policy before enabling automatic account completion.
+
+Application field encryption is available through `DATA_ENCRYPTION_KEY` and
+`DATA_ENCRYPTION_PREVIOUS_KEYS`; existing fields that require search by exact
+email, name or phone continue to remain plaintext. This is intentionally not
+presented as MongoDB encryption at rest. Production MongoDB must separately
+enable provider-level encryption at rest, TLS for the database connection,
+trusted-network restrictions, and encrypted backups.
+
+Data key rotation procedure:
+
+1. Generate a new 32-byte hex key.
+2. Set `DATA_ENCRYPTION_PREVIOUS_KEYS` to the old key and
+   `DATA_ENCRYPTION_KEY` to the new key.
+3. Deploy and verify decryption of existing payloads and creation of new
+   payloads.
+4. Run an approved, non-destructive re-encryption job for stored encrypted
+   payloads.
+5. Remove old keys only after every payload has been re-encrypted and backup
+   rollback windows have expired.
+
+Before deploying the privacy models, run `npm run db:sync-indexes` only after
+reviewing index changes. Do not run a destructive migration automatically.
+Roll back application code while retaining MongoDB fields and export files
+only through a reviewed deployment plan; do not reverse-anonymize deleted
+records. Audit-log deletion remains a policy/infrastructure operation because
+the audit model is append-only and protects its records from application
+updates/deletes.
+
+Retention variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `PRIVACY_EXPORT_TTL` | Export download lifetime; default `15m` |
+| `ACCOUNT_DELETION_GRACE_DAYS` | Staged deletion grace period; default `30` |
+| `PASSWORD_RESET_RETENTION_DAYS` | Password-reset cleanup policy; default `30` |
+| `GUEST_SESSION_RETENTION_DAYS` | Guest cart/wishlist cleanup policy; default `30` |
+| `UNATTACHED_ARTWORK_RETENTION_DAYS` | Unattached artwork cleanup policy; default `1` |
+| `AUDIT_LOG_RETENTION_DAYS` | Operational audit-retention target; default `365` |
+
+The server process runs privacy retention cleanup hourly in production.
 
 ### Artwork storage
 

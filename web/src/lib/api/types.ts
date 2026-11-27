@@ -1087,12 +1087,19 @@ export type Permission =
   | 'audit:read';
 
 export interface AuthResponse {
-  user: AuthUser;
-  permissions: Permission[];
+  user?: AuthUser;
+  permissions?: Permission[];
+  mfaRequired?: true;
+  challenge?: {
+    id: string;
+    expiresAt: string;
+    purpose: 'login' | 'setup';
+  };
 }
 
 export interface ProfileUpdateInput {
   name?: string;
+  email?: string;
   phone?: string;
   addresses?: Array<{
     label: string;

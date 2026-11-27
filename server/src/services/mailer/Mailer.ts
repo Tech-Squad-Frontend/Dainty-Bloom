@@ -4,8 +4,15 @@ export interface PasswordResetEmail {
   resetLink: string;
 }
 
+export interface EmailVerificationEmail {
+  to: string;
+  name: string;
+  verificationLink: string;
+}
+
 export interface Mailer {
   sendPasswordReset(input: PasswordResetEmail): Promise<void>;
+  sendEmailVerification(input: EmailVerificationEmail): Promise<void>;
   sendTransactionalEmail(input: TransactionalEmail): Promise<void>;
 }
 

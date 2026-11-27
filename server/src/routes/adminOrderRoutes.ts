@@ -18,6 +18,7 @@ import {
 } from '../controllers/adminOrder.controller';
 import { authenticate } from '../middleware/authenticate';
 import { requirePermission } from '../middleware/requirePermission';
+import { requireRecentMfa } from '../middleware/requireRecentMfa';
 import { validate } from '../middleware/validate';
 import {
   adminOrderIdSchema,
@@ -101,6 +102,7 @@ adminOrderRoutes.post(
 adminOrderRoutes.post(
   '/:id/refund',
   requirePermission('orders:refund'),
+  requireRecentMfa(),
   validate(refundSchema),
   refund,
 );

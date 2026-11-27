@@ -29,6 +29,15 @@ export interface IArtworkAsset extends Document {
   reviewedBy?: Types.ObjectId;
   reviewedAt?: Date;
   reviewNote?: string;
+  scanStatus:
+    | 'pending'
+    | 'scanning'
+    | 'clean'
+    | 'infected'
+    | 'failed'
+    | 'legacy_unverified';
+  scannedAt?: Date;
+  scanErrorCode?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,7 +46,7 @@ export const artworkAssetSchema = new Schema<IArtworkAsset>(
   {
     owner: { type: Schema.Types.ObjectId, ref: 'User', index: true },
     sessionId: { type: String, trim: true, index: true },
-    storageKey: { type: String, required: true, trim: true, select: false },
+    storageKey: { type: String, trim: true, select: false },
     storageDriver: { type: String, required: true, trim: true },
     storageResourceType: {
       type: String,
@@ -73,6 +82,21 @@ export const artworkAssetSchema = new Schema<IArtworkAsset>(
     reviewedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     reviewedAt: Date,
     reviewNote: { type: String, trim: true },
+    scanStatus: {
+      type: String,
+      enum: [
+        'pending',
+        'scanning',
+        'clean',
+        'infected',
+        'failed',
+        'legacy_unverified',
+      ],
+      default: 'legacy_unverified',
+      index: true,
+    },
+    scannedAt: Date,
+    scanErrorCode: { type: String, trim: true },
   },
   {
     timestamps: true,

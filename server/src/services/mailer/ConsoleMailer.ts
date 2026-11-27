@@ -1,6 +1,11 @@
 import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
-import type { Mailer, PasswordResetEmail, TransactionalEmail } from './Mailer';
+import type {
+  EmailVerificationEmail,
+  Mailer,
+  PasswordResetEmail,
+  TransactionalEmail,
+} from './Mailer';
 
 export class ConsoleMailer implements Mailer {
   async sendPasswordReset(_input: PasswordResetEmail): Promise<void> {
@@ -17,6 +22,12 @@ export class ConsoleMailer implements Mailer {
     }
 
     logger.info('Password reset email requested in development');
+  }
+
+  async sendEmailVerification(_input: EmailVerificationEmail): Promise<void> {
+    logger.info(
+      'Email verification requested; configure a production mail provider',
+    );
   }
 
   async sendTransactionalEmail(input: TransactionalEmail): Promise<void> {

@@ -15,6 +15,26 @@ export function requirePermission(permission: Permission): RequestHandler {
       return;
     }
 
+    if (req.user.role !== 'customer') {
+      if (!req.user.mfaEnabled) {
+        next(new AppError('MFA setup is required', 403, 'MFA_SETUP_REQUIRED'));
+        return;
+      }
+      if (
+        !req.user.recentMfaExpiresAt ||
+        req.user.recentMfaExpiresAt.getTime() <= Date.now()
+      ) {
+        next(
+          new AppError(
+            'MFA verification is required for this session',
+            403,
+            'MFA_VERIFICATION_REQUIRED',
+          ),
+        );
+        return;
+      }
+    }
+
     next();
   };
   return Object.assign(middleware, {

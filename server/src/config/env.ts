@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { loadEnvironment } from './loadEnvironment';
 import { validateStripeEnvironment } from './stripeEnvValidation';
+import { validateMongoConnection } from './mongoConnection';
 
 loadEnvironment();
 
@@ -44,7 +45,21 @@ const envSchema = z
             return Number(value);
           return value;
         },
-        z.union([z.boolean(), z.number().int().nonnegative(), z.string()]),
+        z.union([
+          z.literal(false),
+          z.number().int().nonnegative(),
+          z
+            .string()
+            .trim()
+            .min(1)
+            .refine(
+              (value) =>
+                value !== '*' &&
+                value !== 'true' &&
+                !value.includes('*'),
+              'TRUST_PROXY must be false, a hop count, or explicit trusted proxy addresses',
+            ),
+        ]),
       )
       .default(false),
     BCRYPT_COST: z.coerce.number().int().min(10).max(15).default(12),
@@ -52,6 +67,76 @@ const envSchema = z
       .string()
       .regex(/^\d+[smhdw]$/)
       .default('15m'),
+    EMAIL_VERIFICATION_TTL: z
+      .string()
+      .regex(/^\d+[smhdw]$/)
+      .default('24h'),
+    DATA_ENCRYPTION_KEY: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z
+        .string()
+        .regex(/^[a-f0-9]{64}$/i)
+        .optional(),
+    ),
+    DATA_ENCRYPTION_PREVIOUS_KEYS: z
+      .string()
+      .optional()
+      .transform((value) =>
+        value
+          ? value
+              .split(',')
+              .map((key) => key.trim())
+              .filter((key) => /^[a-f0-9]{64}$/i.test(key))
+          : [],
+      ),
+    PRIVACY_EXPORT_TTL: z
+      .string()
+      .regex(/^\d+[smhdw]$/)
+      .default('15m'),
+    ACCOUNT_DELETION_GRACE_DAYS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(30),
+    PASSWORD_RESET_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(30),
+    GUEST_SESSION_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(30),
+    UNATTACHED_ARTWORK_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(1),
+    AUDIT_LOG_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .min(30)
+      .max(3650)
+      .default(365),
+    MFA_ENCRYPTION_KEY: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z
+        .string()
+        .regex(
+          /^[a-f0-9]{64}$/i,
+          'MFA_ENCRYPTION_KEY must be 32 bytes encoded as 64 hex characters',
+        )
+        .optional(),
+    ),
+    MFA_CHALLENGE_TTL: z
+      .string()
+      .regex(/^\d+[smhdw]$/)
+      .default('10m'),
     CART_MAX_QUANTITY: z.coerce.number().int().positive().max(1000).default(99),
     UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10_485_760),
     STORAGE_DRIVER: z.enum(['local', 'cloudinary']).default('local'),
@@ -59,6 +144,36 @@ const envSchema = z
     UPLOAD_SIGNING_SECRET: z
       .string()
       .min(32, 'UPLOAD_SIGNING_SECRET must be at least 32 characters'),
+    CLAMAV_HOST: z
+      .string()
+      .trim()
+      .min(1)
+      .optional(),
+    CLAMAV_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
+    CLAMAV_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(120_000)
+      .default(30_000),
+    MAX_CONCURRENT_ARTWORK_UPLOADS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(10),
+    ARTWORK_PROCESSING_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(120_000)
+      .default(30_000),
+    ARTWORK_MAX_PIXELS: z.coerce
+      .number()
+      .int()
+      .min(1_000_000)
+      .max(100_000_000)
+      .default(40_000_000),
     PRODUCT_IMAGE_MAX_BYTES: z.coerce
       .number()
       .int()
@@ -150,6 +265,75 @@ const envSchema = z
     ),
   })
   .superRefine((configuration, context) => {
+    if (configuration.NODE_ENV === 'production') {
+      for (const [path, value] of [
+        ['CLIENT_URL', configuration.CLIENT_URL],
+        ['API_PUBLIC_URL', configuration.API_PUBLIC_URL],
+      ] as const) {
+        try {
+          const url = new URL(value);
+          const loopback =
+            url.hostname === 'localhost' ||
+            url.hostname === '127.0.0.1' ||
+            url.hostname === '[::1]';
+          if (url.protocol !== 'https:' && !loopback) {
+            context.addIssue({
+              code: 'custom',
+              path: [path],
+              message: `${path} must use HTTPS in production`,
+            });
+          }
+        } catch {
+          context.addIssue({
+            code: 'custom',
+            path: [path],
+            message: `${path} must be a valid absolute URL`,
+          });
+        }
+      }
+    }
+    try {
+      validateMongoConnection(
+        configuration.MONGODB_URI,
+        configuration.NODE_ENV,
+      );
+    } catch (error) {
+      context.addIssue({
+        code: 'custom',
+        path: ['MONGODB_URI'],
+        message:
+          error instanceof Error
+            ? error.message
+            : 'MONGODB_URI is invalid',
+      });
+    }
+    if (
+      configuration.NODE_ENV === 'production' &&
+      !configuration.CLAMAV_HOST
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['CLAMAV_HOST'],
+        message: 'CLAMAV_HOST is required in production',
+      });
+    }
+    if (
+      configuration.NODE_ENV === 'production' &&
+      !configuration.DATA_ENCRYPTION_KEY
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['DATA_ENCRYPTION_KEY'],
+        message: 'DATA_ENCRYPTION_KEY is required in production',
+      });
+    }
+    if (configuration.NODE_ENV === 'production' && !configuration.MFA_ENCRYPTION_KEY) {
+      context.addIssue({
+        code: 'custom',
+        path: ['MFA_ENCRYPTION_KEY'],
+        message: 'MFA_ENCRYPTION_KEY is required in production',
+      });
+    }
     const cloudinaryConfigured =
       Boolean(configuration.CLOUDINARY_URL) ||
       Boolean(

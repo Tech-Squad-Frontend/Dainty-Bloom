@@ -32,6 +32,11 @@ import {
   type StorageDriver,
 } from './storage';
 import { applyArtworkDecisionToOrder as applyOrderArtworkDecision } from './orderWorkflow.service';
+import { ROLE_PERMISSIONS } from '../constants/permissions';
+import {
+  malwareScannerError,
+  scanBufferForMalware,
+} from './malwareScan.service';
 
 export const DEFAULT_ARTWORK_TYPES = [
   'image/png',
@@ -39,8 +44,10 @@ export const DEFAULT_ARTWORK_TYPES = [
   'application/pdf',
   'image/svg+xml',
 ];
-const ORPHAN_FILE_GRACE_MS = 24 * 60 * 60 * 1000;
 const activeArtworkUploads = new Set<string>();
+const ORPHAN_FILE_GRACE_MS =
+  env.UNATTACHED_ARTWORK_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+let activeUploadCount = 0;
 
 export interface ArtworkIdentity {
   user?: IUser;
@@ -61,6 +68,7 @@ export interface ArtworkMetadata {
   height?: number;
   reviewStatus: string;
   createdAt: Date;
+  scanStatus: IArtworkAsset['scanStatus'];
 }
 
 export interface ArtworkReviewQuery {
@@ -79,6 +87,32 @@ export async function saveArtworkUpload(
   storage: StorageDriver = getDriverFor(),
 ): Promise<ArtworkMetadata> {
   if (!file) throw new AppError('A file is required', 400, 'NO_FILE');
+  if (activeUploadCount >= env.MAX_CONCURRENT_ARTWORK_UPLOADS) {
+    throw new AppError(
+      'Artwork uploads are temporarily busy',
+      503,
+      'ARTWORK_UPLOAD_BUSY',
+    );
+  }
+  activeUploadCount += 1;
+  try {
+    return await saveArtworkUploadWithLimit(
+      identity,
+      file,
+      imageOnly,
+      storage,
+    );
+  } finally {
+    activeUploadCount -= 1;
+  }
+}
+
+async function saveArtworkUploadWithLimit(
+  identity: ArtworkIdentity,
+  file: UploadedArtworkFile,
+  imageOnly: boolean,
+  storage: StorageDriver,
+): Promise<ArtworkMetadata> {
   const settings = await SiteSettings.findOne({ key: 'default' })
     .select('artworkLimits')
     .lean();
@@ -114,6 +148,32 @@ export async function saveArtworkUpload(
     );
   }
 
+  const scanResult = await scanBufferForMalware(file.buffer);
+  if (scanResult.status === 'failed') {
+    throw malwareScannerError(scanResult);
+  }
+  if (scanResult.status === 'infected') {
+    await ArtworkAsset.create({
+      ...(identity.user
+        ? { owner: identity.user._id }
+        : { sessionId: identity.sessionId }),
+      storageDriver: env.STORAGE_DRIVER,
+      originalFilename: normalizeFilename(file.originalname),
+      detectedMimeType,
+      sizeBytes: file.buffer.byteLength,
+      checksum: createHash('sha256').update(file.buffer).digest('hex'),
+      reviewStatus: 'pending',
+      scanStatus: 'infected',
+      scannedAt: new Date(),
+      scanErrorCode: scanResult.signature,
+    });
+    throw new AppError(
+      'Artwork upload was quarantined',
+      400,
+      'ARTWORK_QUARANTINED',
+    );
+  }
+
   let width: number | undefined;
   let height: number | undefined;
   if (
@@ -121,12 +181,31 @@ export async function saveArtworkUpload(
     detectedMimeType !== 'image/svg+xml'
   ) {
     try {
-      const metadata = await sharp(file.buffer, { failOn: 'error' }).metadata();
+      const metadata = await Promise.race([
+        sharp(file.buffer, {
+          failOn: 'error',
+          limitInputPixels: env.ARTWORK_MAX_PIXELS,
+        }).metadata(),
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new AppError(
+                  'Image processing timed out',
+                  503,
+                  'ARTWORK_PROCESSING_TIMEOUT',
+                ),
+              ),
+            env.ARTWORK_PROCESSING_TIMEOUT_MS,
+          ).unref(),
+        ),
+      ]);
       if (!metadata.width || !metadata.height)
         throw new Error('Missing dimensions');
       width = metadata.width;
       height = metadata.height;
-    } catch {
+    } catch (error) {
+      if (error instanceof AppError) throw error;
       throw new AppError('The image file is corrupt', 400, 'FILE_CORRUPT');
     }
   }
@@ -175,6 +254,8 @@ export async function saveArtworkUpload(
         height,
         checksum: createHash('sha256').update(file.buffer).digest('hex'),
         reviewStatus: 'pending',
+        scanStatus: 'clean',
+        scannedAt: new Date(),
       });
       return artworkMetadata(artwork);
     } catch (error) {
@@ -201,6 +282,7 @@ export async function getArtworkMetadata(
   actor?: IUser,
 ): Promise<ArtworkMetadata> {
   const artwork = await findArtwork(id);
+  assertArtworkSafeForAccess(artwork);
   if (!staff && !ownsArtwork(artwork, identity)) {
     throw new AppError('Artwork not found', 404, 'ARTWORK_NOT_FOUND');
   }
@@ -217,6 +299,7 @@ export async function streamArtwork(
   actor?: IUser,
 ): Promise<void> {
   const artwork = await findArtwork(id);
+  assertArtworkSafeForAccess(artwork);
   if (!staff && !ownsArtwork(artwork, identity)) {
     throw new AppError('Artwork not found', 404, 'ARTWORK_NOT_FOUND');
   }
@@ -234,6 +317,7 @@ export async function streamArtworkPreview(
   actor?: IUser,
 ): Promise<void> {
   const artwork = await findArtwork(id);
+  assertArtworkSafeForAccess(artwork);
   if (!staff && !ownsArtwork(artwork, identity)) {
     throw new AppError('Artwork not found', 404, 'ARTWORK_NOT_FOUND');
   }
@@ -262,11 +346,13 @@ export async function makeArtworkDownloadLink(
   actor: IUser,
 ): Promise<{ token: string; expiresAt: Date }> {
   const artwork = await findArtwork(id);
+  assertArtworkSafeForAccess(artwork);
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
   const token = signDownloadToken(
     artwork._id.toString(),
     expiresAt.getTime(),
     actor._id.toString(),
+    actor.tokenVersion,
   );
   await auditStaffAccess(actor, artwork, 'artwork.download_link');
   return { token, expiresAt };
@@ -279,8 +365,16 @@ export async function streamSignedArtwork(
 ): Promise<void> {
   const parsed = parseDownloadToken(token);
   const artwork = await findArtwork(parsed.id);
+  assertArtworkSafeForAccess(artwork);
   const actor = await User.findById(parsed.actorId);
-  if (!actor) throw invalidSignedToken();
+  if (
+    !actor ||
+    actor.accountState !== 'active' ||
+    actor.tokenVersion !== parsed.tokenVersion ||
+    !ROLE_PERMISSIONS[actor.role].includes('artwork:review')
+  ) {
+    throw invalidSignedToken();
+  }
   await auditStaffAccess(actor, artwork, 'artwork.signed_file_access');
   setPrivateDownloadHeaders(response, artwork);
   pipePrivateFile(artwork, response, next);
@@ -324,6 +418,7 @@ export async function listArtworkForReview(
   actor: IUser,
 ): Promise<unknown> {
   const match: Record<string, unknown> = {};
+  match.scanStatus = 'clean';
   if (query.reviewStatus) match.reviewStatus = query.reviewStatus;
   if (query.from || query.to) {
     match.createdAt = {
@@ -500,7 +595,7 @@ export async function cleanupUnattachedArtwork(
   storageOverride?: StorageDriver,
 ): Promise<{ deletedRecords: number; deletedFiles: number }> {
   const now = new Date();
-  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const cutoff = new Date(now.getTime() - ORPHAN_FILE_GRACE_MS);
   await clearStaleCartItemReferences(now);
   const stale = await ArtworkAsset.find({
     createdAt: { $lt: cutoff },
@@ -550,6 +645,11 @@ export async function cleanupUnattachedArtwork(
   let deletedRecords = 0;
   for (const artwork of stale) {
     if (attachedIds.has(artwork._id.toString())) continue;
+    if (!artwork.storageKey) {
+      await artwork.deleteOne();
+      deletedRecords += 1;
+      continue;
+    }
     const storage =
       storageOverride && artwork.storageDriver === env.STORAGE_DRIVER
         ? storageOverride
@@ -701,6 +801,7 @@ function artworkMetadata(artwork: IArtworkAsset): ArtworkMetadata {
     height: artwork.height,
     reviewStatus: artwork.reviewStatus,
     createdAt: artwork.createdAt,
+    scanStatus: artwork.scanStatus,
   };
 }
 
@@ -708,22 +809,28 @@ function signDownloadToken(
   id: string,
   expiresAt: number,
   actorId: string,
+  tokenVersion: number,
 ): string {
-  const payload = `${id}.${expiresAt}.${actorId}`;
+  const payload = `${id}.${expiresAt}.${actorId}.${tokenVersion}`;
   const signature = createHmac('sha256', env.UPLOAD_SIGNING_SECRET)
     .update(payload)
     .digest('hex');
   return Buffer.from(`${payload}.${signature}`).toString('base64url');
 }
 
-function parseDownloadToken(token: string): { id: string; actorId: string } {
+function parseDownloadToken(token: string): {
+  id: string;
+  actorId: string;
+  tokenVersion: number;
+} {
   let decoded: string;
   try {
     decoded = Buffer.from(token, 'base64url').toString('utf8');
   } catch {
     throw invalidSignedToken();
   }
-  const [id, expires, actorId, signature, extra] = decoded.split('.');
+  const [id, expires, actorId, tokenVersion, signature, extra] =
+    decoded.split('.');
   if (
     !id ||
     !expires ||
@@ -731,12 +838,13 @@ function parseDownloadToken(token: string): { id: string; actorId: string } {
     !signature ||
     extra ||
     !mongoose.isValidObjectId(id) ||
-    !mongoose.isValidObjectId(actorId)
+    !mongoose.isValidObjectId(actorId) ||
+    !/^\d+$/.test(tokenVersion)
   ) {
     throw invalidSignedToken();
   }
   const expiresAt = Number(expires);
-  const payload = `${id}.${expires}.${actorId}`;
+  const payload = `${id}.${expires}.${actorId}.${tokenVersion}`;
   const expected = createHmac('sha256', env.UPLOAD_SIGNING_SECRET)
     .update(payload)
     .digest();
@@ -754,7 +862,24 @@ function parseDownloadToken(token: string): { id: string; actorId: string } {
   ) {
     throw invalidSignedToken();
   }
-  return { id, actorId };
+  return { id, actorId, tokenVersion: Number(tokenVersion) };
+}
+
+function assertArtworkSafeForAccess(artwork: IArtworkAsset): void {
+  if (artwork.scanStatus !== 'clean') {
+    throw new AppError(
+      'Artwork is not available',
+      409,
+      'ARTWORK_NOT_SCANNED',
+    );
+  }
+  if (!artwork.storageKey) {
+    throw new AppError(
+      'Artwork is quarantined',
+      409,
+      'ARTWORK_QUARANTINED',
+    );
+  }
 }
 
 function invalidSignedToken(): AppError {

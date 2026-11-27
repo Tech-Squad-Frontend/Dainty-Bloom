@@ -8,6 +8,10 @@ import { cleanupUnattachedArtwork } from './services/upload.service';
 import { expireUnpaidOrders } from './services/payment/paymentFlow.service';
 import { processPendingPrivateOfferPaymentFulfillments } from './services/orderWorkflow.service';
 import { createIntervalWorker } from './utils/intervalWorker';
+import {
+  cleanupPrivacyRetention,
+  completeScheduledAccountDeletions,
+} from './services/privacy.service';
 
 let uploadCleanupScheduled = false;
 
@@ -35,6 +39,18 @@ async function startServer(): Promise<void> {
           logger.error(
             { err: error },
             'Scheduled unpaid-order expiration failed',
+          );
+        });
+        void cleanupPrivacyRetention().catch((error: unknown) => {
+          logger.error(
+            { err: error },
+            'Scheduled privacy retention cleanup failed',
+          );
+        });
+        void completeScheduledAccountDeletions().catch((error: unknown) => {
+          logger.error(
+            { err: error },
+            'Scheduled account deletion processing failed',
           );
         });
       },

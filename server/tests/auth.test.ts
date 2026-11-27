@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import jwt from 'jsonwebtoken';
+import { TOTP } from 'otpauth';
 import mongoose from 'mongoose';
 import request from 'supertest';
 import {
@@ -26,9 +27,12 @@ vi.mock('nodemailer', () => ({
 }));
 
 import { env } from '../src/config/env';
+import { encryptMfaSecret } from '../src/utils/mfa';
 import { ROLE_PERMISSIONS } from '../src/constants/permissions';
-import { AuditEvent, User } from '../src/models';
+import { AuditEvent, Order, User } from '../src/models';
 import { app } from '../src/app';
+import { PrivacyExport } from '../src/models';
+import { completeScheduledAccountDeletions } from '../src/services/privacy.service';
 import { resetSmtpTransport } from '../src/services/mailer/smtpTransport';
 
 const CSRF_HEADER = { 'X-Requested-With': 'dainty-bloom' };
@@ -90,23 +94,12 @@ describe('Authentication and authorization', () => {
     const response = await login(user.email, PASSWORD, 'admin');
 
     expect(response.status).toBe(200);
-    const cookies = setCookies(response);
-    expect(
-      cookies.some((cookie) => cookie.startsWith('daintyAccessToken=')),
-    ).toBe(true);
-    expect(
-      cookies.some((cookie) => cookie.startsWith('daintyRefreshToken=')),
-    ).toBe(true);
-    expect(cookies.every((cookie) => /httponly/i.test(cookie))).toBe(true);
+    expect(response.body.data.mfaRequired).toBe(true);
+    expect(response.body.data.challenge.purpose).toBe('setup');
+    expect(authCookies(response)).toEqual([]);
     expect(JSON.stringify(response.body)).not.toMatch(
       /accessToken|refreshToken|eyJ/,
     );
-    expect(response.body.data.permissions).toEqual(ROLE_PERMISSIONS.admin);
-
-    const profile = await request(app)
-      .get('/api/auth/me')
-      .set('Cookie', accessCookie(response));
-    expect(profile.body.data.permissions).toEqual(ROLE_PERMISSIONS.admin);
   });
 
   it('returns identical responses for an unknown email and a wrong password', async () => {
@@ -323,6 +316,13 @@ describe('Authentication and authorization', () => {
       .set(CSRF_HEADER)
       .set('Cookie', oldRefreshCookie);
     expect(replay.status).toBe(401);
+    expect(
+      (
+        await request(app)
+          .get('/api/auth/me')
+          .set('Cookie', accessCookie(refreshResponse))
+      ).status,
+    ).toBe(401);
   });
 
   it('enforces admin permissions for customer, admin, and unauthenticated requests', async () => {
@@ -336,11 +336,328 @@ describe('Authentication and authorization', () => {
       .set('Cookie', accessCookie(session));
     expect(customerResponse.status).toBe(403);
 
-    await User.updateOne({ _id: user._id }, { $set: { role: 'admin' } });
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          role: 'admin',
+          mfaEnabled: true,
+          recentMfaExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        },
+      },
+    );
     const adminResponse = await request(app)
       .get('/api/admin/ping')
       .set('Cookie', accessCookie(session));
     expect(adminResponse.status).toBe(200);
+  });
+
+  it('enrolls staff MFA and consumes recovery codes once', async () => {
+    const user = await createUser({ role: 'admin' });
+    const firstLogin = await login(user.email, PASSWORD, 'admin');
+    expect(firstLogin.body.data.challenge.purpose).toBe('setup');
+    const challengeId = firstLogin.body.data.challenge.id as string;
+
+    const enrollment = await request(app)
+      .post('/api/auth/mfa/enroll/start')
+      .set(CSRF_HEADER)
+      .send({ challengeId });
+    expect(enrollment.status).toBe(200);
+    const secret = enrollment.body.data.secret as string;
+    const code = TOTP.generate({ secret });
+
+    const confirmed = await request(app)
+      .post('/api/auth/mfa/enroll/confirm')
+      .set(CSRF_HEADER)
+      .send({ challengeId, code });
+    expect(confirmed.status).toBe(200);
+    expect(
+      authCookies(confirmed).filter((cookie) =>
+        /^(daintyAccessToken|daintyRefreshToken)=[^;]/.test(cookie),
+      ).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(confirmed.body.data.recoveryCodes).toHaveLength(10);
+
+    const stored = await User.findById(user._id).select(
+      '+mfaSecretEncrypted +mfaRecoveryCodes',
+    );
+    expect(stored?.mfaEnabled).toBe(true);
+    expect(stored?.mfaSecretEncrypted).not.toBe(secret);
+
+    const recoveryCode = confirmed.body.data.recoveryCodes[0] as string;
+    const subsequentLogin = await login(user.email, PASSWORD, 'admin');
+    expect(subsequentLogin.body.data.challenge.purpose).toBe('login');
+    const verified = await request(app)
+      .post('/api/auth/mfa/verify')
+      .set(CSRF_HEADER)
+      .send({
+        challengeId: subsequentLogin.body.data.challenge.id,
+        code: recoveryCode,
+      });
+    expect(verified.status).toBe(200);
+
+    const replayLogin = await login(user.email, PASSWORD, 'admin');
+    const replay = await request(app)
+      .post('/api/auth/mfa/verify')
+      .set(CSRF_HEADER)
+      .send({
+        challengeId: replayLogin.body.data.challenge.id,
+        code: recoveryCode,
+      });
+    expect(replay.status).toBe(401);
+  });
+
+  it('rate-limits repeated incorrect MFA codes', async () => {
+    const secret = 'JBSWY3DPEHPK3PXP';
+    const user = await createUser({
+      role: 'admin',
+      mfaEnabled: true,
+      mfaSecretEncrypted: encryptMfaSecret(secret),
+    });
+    const loginResponse = await login(user.email, PASSWORD, 'admin');
+    const challengeId = loginResponse.body.data.challenge.id as string;
+
+    let last;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      last = await request(app)
+        .post('/api/auth/mfa/verify')
+        .set(CSRF_HEADER)
+        .send({ challengeId, code: '000000' });
+      expect([401, 429]).toContain(last.status);
+    }
+
+    const blocked = await request(app)
+      .post('/api/auth/mfa/verify')
+      .set(CSRF_HEADER)
+      .send({ challengeId, code: '000000' });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error.code).toBe('MFA_RATE_LIMITED');
+  });
+
+  it('rejects staff without MFA and requires recent MFA for refunds', async () => {
+    const user = await createUser({ role: 'admin', mfaEnabled: false });
+    const accessToken = jwt.sign(
+      { sub: user._id.toString(), ver: user.tokenVersion, typ: 'access' },
+      env.JWT_ACCESS_SECRET,
+      { expiresIn: '15m' },
+    );
+    const adminPing = await request(app)
+      .get('/api/admin/ping')
+      .set('Cookie', `daintyAccessToken=${accessToken}`);
+    expect(adminPing.status).toBe(403);
+    expect(adminPing.body.error.code).toBe('MFA_SETUP_REQUIRED');
+
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          mfaEnabled: true,
+        },
+        $unset: { recentMfaExpiresAt: 1 },
+      },
+    );
+    const recentToken = jwt.sign(
+      { sub: user._id.toString(), ver: user.tokenVersion, typ: 'access' },
+      env.JWT_ACCESS_SECRET,
+      { expiresIn: '15m' },
+    );
+    const refund = await request(app)
+      .post('/api/admin/orders/507f1f77bcf86cd799439011/refund')
+      .set(CSRF_HEADER)
+      .set('Cookie', `daintyAccessToken=${recentToken}`)
+      .send({ amountMinor: 100, reason: 'customer request' });
+    expect(refund.status).toBe(403);
+    expect(refund.body.error.code).toBe('MFA_VERIFICATION_REQUIRED');
+  });
+
+  it('verifies email tokens once and invalidates verification on email change', async () => {
+    const user = await createUser();
+    env.NODE_ENV = 'production';
+    await request(app)
+      .post('/api/auth/verify-email/request')
+      .set(CSRF_HEADER)
+      .send({ email: user.email });
+
+    const stored = await User.findById(user._id).select(
+      '+emailVerificationTokenHash +emailVerificationExpiresAt',
+    );
+    expect(stored?.emailVerificationTokenHash).toBeTruthy();
+    const token = stored?.emailVerificationTokenHash
+      ? createHash('sha256').update('unused-in-test').digest('hex')
+      : '';
+    expect(token).not.toBe(stored?.emailVerificationTokenHash);
+
+    const session = await login(user.email);
+    const verificationToken = 'c'.repeat(64);
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          emailVerificationTokenHash: createHash('sha256')
+            .update(verificationToken)
+            .digest('hex'),
+          emailVerificationExpiresAt: new Date(Date.now() + 60_000),
+        },
+      },
+    );
+    const verified = await request(app)
+      .post('/api/auth/verify-email')
+      .set(CSRF_HEADER)
+      .send({ token: verificationToken });
+    expect(verified.status).toBe(200);
+    expect((await User.findById(user._id))?.emailVerified).toBe(true);
+
+    const replay = await request(app)
+      .post('/api/auth/verify-email')
+      .set(CSRF_HEADER)
+      .send({ token: verificationToken });
+    expect(replay.status).toBe(400);
+
+    const changed = await request(app)
+      .patch('/api/auth/me')
+      .set(CSRF_HEADER)
+      .set('Cookie', accessCookie(session))
+      .send({ email: 'changed@example.com' });
+    expect(changed.status).toBe(200);
+    const changedUser = await User.findById(user._id);
+    expect(changedUser?.emailVerified).toBe(false);
+  });
+
+  it('creates a private customer export and prevents cross-customer download', async () => {
+    const owner = await createUser();
+    const other = await createUser();
+    await Order.create({
+      orderNumber: `DB-${Math.random().toString(36).slice(2)}`,
+      user: owner._id,
+      contactSnapshot: {
+        name: owner.name,
+        email: owner.email,
+      },
+      shippingAddress: {
+        line1: '1 Test Street',
+        city: 'Testville',
+        state: 'Test',
+        postalCode: 'TE1 1ST',
+        country: 'GB',
+      },
+      billingAddress: {
+        line1: '1 Test Street',
+        city: 'Testville',
+        state: 'Test',
+        postalCode: 'TE1 1ST',
+        country: 'GB',
+      },
+      items: [],
+      subtotalMinor: 100,
+      discountMinor: 0,
+      shippingMinor: 0,
+      taxMinor: 0,
+      totalMinor: 100,
+      currency: 'GBP',
+      payment: { provider: 'manual', status: 'paid' },
+      status: 'completed',
+      statusHistory: [],
+    });
+
+    const ownerSession = await login(owner.email);
+    const requested = await request(app)
+      .post('/api/privacy/data-export')
+      .set(CSRF_HEADER)
+      .set('Cookie', accessCookie(ownerSession));
+    expect(requested.status).toBe(202);
+    const exportId = requested.body.data.id as string;
+    const downloadUrl = String(requested.body.data.downloadUrl);
+    const token = new URL(
+      downloadUrl,
+      'http://localhost:3000',
+    ).searchParams.get('token');
+    expect(token).toBeTruthy();
+
+    const ownerDownload = await request(app)
+      .get(
+        `/api/privacy/data-export/${exportId}/download?token=${encodeURIComponent(token!)}`,
+      )
+      .set(CSRF_HEADER)
+      .set('Cookie', accessCookie(ownerSession));
+    expect(ownerDownload.status).toBe(200);
+    expect(ownerDownload.headers['content-type']).toContain('application/json');
+    expect(JSON.stringify(ownerDownload.body)).not.toContain('passwordHash');
+
+    const otherSession = await login(other.email);
+    const otherDownload = await request(app)
+      .get(
+        `/api/privacy/data-export/${exportId}/download?token=${encodeURIComponent(token!)}`,
+      )
+      .set(CSRF_HEADER)
+      .set('Cookie', accessCookie(otherSession));
+    expect(otherDownload.status).toBe(404);
+
+    await PrivacyExport.updateOne(
+      { _id: exportId },
+      { $set: { expiresAt: new Date(Date.now() - 1000) } },
+    );
+    const expired = await request(app)
+      .get(
+        `/api/privacy/data-export/${exportId}/download?token=${encodeURIComponent(token!)}`,
+      )
+      .set(CSRF_HEADER)
+      .set('Cookie', accessCookie(ownerSession));
+    expect(expired.status).toBe(404);
+  });
+
+  it('schedules deletion, blocks authentication, and preserves order reconciliation', async () => {
+    const user = await createUser();
+    const order = await Order.create({
+      orderNumber: `DB-${Math.random().toString(36).slice(2)}`,
+      user: user._id,
+      contactSnapshot: { name: user.name, email: user.email },
+      shippingAddress: {
+        line1: '1 Test Street',
+        city: 'Testville',
+        state: 'Test',
+        postalCode: 'TE1 1ST',
+        country: 'GB',
+      },
+      billingAddress: {
+        line1: '1 Test Street',
+        city: 'Testville',
+        state: 'Test',
+        postalCode: 'TE1 1ST',
+        country: 'GB',
+      },
+      items: [],
+      subtotalMinor: 100,
+      discountMinor: 0,
+      shippingMinor: 0,
+      taxMinor: 0,
+      totalMinor: 100,
+      currency: 'GBP',
+      payment: { provider: 'manual', status: 'paid' },
+      status: 'completed',
+      statusHistory: [],
+    });
+    const session = await login(user.email);
+    const scheduled = await request(app)
+      .post('/api/privacy/delete-account/request')
+      .set(CSRF_HEADER)
+      .set('Cookie', accessCookie(session))
+      .send({ password: PASSWORD });
+    expect(scheduled.status).toBe(202);
+
+    const denied = await login(user.email);
+    expect(denied.status).toBe(401);
+
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { deletionScheduledAt: new Date(Date.now() - 1000) } },
+    );
+    const completion = await completeScheduledAccountDeletions();
+    expect(completion.completed).toBe(1);
+    const retained = await Order.findById(order._id);
+    expect(retained?.user?.toString()).toBe(user._id.toString());
+    const deleted = await User.findById(user._id).select('+deletionStatus');
+    expect(deleted?.deletionStatus).toBe('completed');
+    expect(deleted?.name).toBe('Deleted Customer');
   });
 
   it('rejects state-changing requests without the CSRF header', async () => {

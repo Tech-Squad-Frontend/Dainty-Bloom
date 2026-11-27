@@ -17,6 +17,7 @@ import {
 import { faqs } from '../controllers/adminOperations.controller';
 import { authenticate } from '../middleware/authenticate';
 import { requirePermission } from '../middleware/requirePermission';
+import { requireRecentMfa } from '../middleware/requireRecentMfa';
 import { validate } from '../middleware/validate';
 import {
   auditListSchema,
@@ -66,8 +67,18 @@ newsletterRoutes.get(
 export const adminStaffRoutes = Router();
 adminStaffRoutes.use(authenticate, requirePermission('staff:manage'));
 adminStaffRoutes.get('/', validate(staffListSchema), staffList);
-adminStaffRoutes.post('/', validate(createStaffSchema), staffCreate);
-adminStaffRoutes.patch('/:id', validate(updateStaffSchema), staffUpdate);
+adminStaffRoutes.post(
+  '/',
+  requireRecentMfa(),
+  validate(createStaffSchema),
+  staffCreate,
+);
+adminStaffRoutes.patch(
+  '/:id',
+  requireRecentMfa(),
+  validate(updateStaffSchema),
+  staffUpdate,
+);
 
 export const adminAuditRoutes = Router();
 adminAuditRoutes.use(authenticate, requirePermission('audit:read'));

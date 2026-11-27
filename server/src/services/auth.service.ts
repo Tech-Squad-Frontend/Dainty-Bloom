@@ -10,6 +10,8 @@ import { logAuditEvent } from './audit.service';
 import { mergeGuestCart } from './cart.service';
 import { getMailer } from './mailer';
 import { mergeGuestWishlist } from './wishlist.service';
+import { createLoginMfaChallenge, type MfaChallenge } from './mfa.service';
+import { issueEmailVerification } from './emailVerification.service';
 
 const ACCESS_COOKIE = 'daintyAccessToken';
 const REFRESH_COOKIE = 'daintyRefreshToken';
@@ -32,6 +34,11 @@ export interface SafeUser {
   lastLoginAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface LoginResult {
+  user: IUser;
+  mfaChallenge?: MfaChallenge;
 }
 
 export function toSafeUser(user: IUser): SafeUser {
@@ -88,12 +95,23 @@ export async function registerUser(input: {
   password: string;
 }): Promise<IUser> {
   const passwordHash = await bcrypt.hash(input.password, env.BCRYPT_COST);
-  return User.create({
+  const user = await User.create({
     name: input.name,
     email: input.email.toLowerCase(),
     passwordHash,
     role: 'customer',
   });
+  try {
+    await issueEmailVerification(user);
+  } catch (error) {
+    if (
+      !(error instanceof AppError) ||
+      !['EMAIL_NOT_CONFIGURED', 'EMAIL_DELIVERY_FAILED'].includes(error.code)
+    ) {
+      throw error;
+    }
+  }
+  return user;
 }
 
 export async function loginUser(
@@ -102,10 +120,10 @@ export async function loginUser(
   ip?: string,
   guestSessionId?: string,
   portal: 'customer' | 'admin' = 'customer',
-): Promise<IUser> {
+): Promise<LoginResult> {
   const normalizedEmail = email.toLowerCase();
   const user = await User.findOne({ email: normalizedEmail }).select(
-    '+passwordHash +failedLoginAttempts +lockUntil',
+    '+passwordHash +failedLoginAttempts +lockUntil +deletionStatus',
   );
 
   if (!user) {
@@ -131,6 +149,7 @@ export async function loginUser(
     (portal === 'customer' && user.role !== 'customer');
   if (
     user.accountState !== 'active' ||
+    user.deletionStatus === 'requested' ||
     isLocked ||
     !passwordMatches ||
     deniedPortal
@@ -161,7 +180,7 @@ export async function loginUser(
             ? portal === 'admin'
               ? 'admin_portal_denied'
               : 'customer_portal_denied'
-            : user.accountState !== 'active'
+            : user.accountState !== 'active' || user.deletionStatus === 'requested'
               ? 'account_suspended'
               : 'invalid_credentials',
       },
@@ -183,9 +202,14 @@ export async function loginUser(
     ip,
   });
 
+  if (user.role !== 'customer') {
+    const mfaChallenge = await createLoginMfaChallenge(user, ip);
+    return { user, mfaChallenge };
+  }
+
   await mergeGuestCart(user, guestSessionId);
   await mergeGuestWishlist(user, guestSessionId);
-  return user;
+  return { user };
 }
 
 export async function logoutUser(user: IUser, ip?: string): Promise<void> {
@@ -202,6 +226,23 @@ export async function logoutUser(user: IUser, ip?: string): Promise<void> {
 
 export async function rotateRefreshToken(token: string): Promise<IUser> {
   const payload = verifyRefreshToken(token);
+  const existing = await User.findById(payload.sub).select(
+    '+mfaSecretEncrypted',
+  );
+  if (existing && existing.tokenVersion !== payload.ver) {
+    const presentedVersion = payload.ver;
+    const currentVersion = existing.tokenVersion;
+    existing.tokenVersion += 1;
+    existing.recentMfaExpiresAt = undefined;
+    await existing.save();
+    await logAuditEvent({
+      actor: existing,
+      action: 'auth.refresh_replay',
+      targetType: 'User',
+      targetId: existing._id.toString(),
+      metadata: { presentedVersion, currentVersion },
+    });
+  }
   const user = await User.findOneAndUpdate(
     {
       _id: payload.sub,
@@ -220,11 +261,45 @@ export async function rotateRefreshToken(token: string): Promise<IUser> {
 
 export async function updateProfile(
   userId: string,
-  updates: { name?: string; phone?: string; addresses?: IAddress[] },
+  updates: {
+    name?: string;
+    phone?: string;
+    addresses?: IAddress[];
+    email?: string;
+  },
 ): Promise<IUser> {
+  const existing = await User.findById(userId);
+  if (!existing) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+  const emailChanging =
+    updates.email !== undefined &&
+    updates.email.toLowerCase() !== existing.email;
+  if (emailChanging) {
+    if (await User.exists({ email: updates.email!.toLowerCase(), _id: { $ne: existing._id } })) {
+      throw new AppError('A user with this email already exists', 409, 'DUPLICATE_KEY');
+    }
+  }
   const user = await User.findByIdAndUpdate(
     userId,
-    { $set: updates },
+    {
+      $set: {
+        ...updates,
+        ...(updates.email ? { email: updates.email.toLowerCase() } : {}),
+        ...(emailChanging
+          ? {
+              emailVerified: false,
+              tokenVersion: existing.tokenVersion + 1,
+            }
+          : {}),
+      },
+      ...(emailChanging
+        ? {
+            $unset: {
+              emailVerificationTokenHash: 1,
+              emailVerificationExpiresAt: 1,
+            },
+          }
+        : {}),
+    },
     { new: true, runValidators: true },
   );
   if (!user) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
@@ -258,6 +333,7 @@ export async function changePassword(
   userWithPassword.tokenVersion += 1;
   userWithPassword.failedLoginAttempts = 0;
   userWithPassword.lockUntil = undefined;
+  userWithPassword.recentMfaExpiresAt = undefined;
   await userWithPassword.save();
 
   await logAuditEvent({
@@ -315,6 +391,7 @@ export async function resetPassword(
         passwordResetTokenHash: 1,
         passwordResetExpiresAt: 1,
         lockUntil: 1,
+        recentMfaExpiresAt: 1,
       },
     },
     { new: true },

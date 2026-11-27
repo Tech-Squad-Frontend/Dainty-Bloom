@@ -1,5 +1,7 @@
 import type { RequestHandler } from 'express';
 
+import { env } from '../config/env';
+
 import {
   clearAuthCookies,
   changePassword,
@@ -20,10 +22,24 @@ import type {
   ChangePasswordInput,
   ForgotPasswordInput,
   LoginInput,
+  MfaVerifyInput,
   ProfileInput,
   RegisterInput,
   ResetPasswordInput,
 } from '../validators/auth.validators';
+import {
+  beginMfaEnrollment,
+  beginMfaEnrollmentForChallenge,
+  confirmMfaEnrollment,
+  confirmMfaEnrollmentForChallenge,
+  disableMfa,
+  verifyLoginMfaChallenge,
+} from '../services/mfa.service';
+import {
+  requestEmailVerification,
+  verifyEmailToken,
+} from '../services/emailVerification.service';
+import { createCsrfToken } from '../services/csrf.service';
 
 export const register: RequestHandler = asyncHandler(
   async (req, res): Promise<void> => {
@@ -41,19 +57,33 @@ export const register: RequestHandler = asyncHandler(
 export const login: RequestHandler = asyncHandler(
   async (req, res): Promise<void> => {
     const input = req.body as LoginInput;
-    const user = await loginUser(
+    const result = await loginUser(
       input.email,
       input.password,
       req.ip,
       req.guestSessionId,
       input.portal,
     );
-    setAuthCookies(res, user);
+    if (result.mfaChallenge) {
+      res.json({
+        success: true,
+        data: {
+          mfaRequired: true,
+          challenge: {
+            id: result.mfaChallenge.challengeId,
+            expiresAt: result.mfaChallenge.expiresAt,
+            purpose: result.mfaChallenge.purpose,
+          },
+        },
+      });
+      return;
+    }
+    setAuthCookies(res, result.user);
     res.json({
       success: true,
       data: {
-        user: toSafeUser(user),
-        permissions: ROLE_PERMISSIONS[user.role],
+        user: toSafeUser(result.user),
+        permissions: ROLE_PERMISSIONS[result.user.role],
       },
     });
   },
@@ -98,6 +128,13 @@ export const updateMe: RequestHandler = asyncHandler(
       getUser(req)._id.toString(),
       req.body as ProfileInput,
     );
+    if ((req.body as ProfileInput).email) {
+      try {
+        await requestEmailVerification(user.email, req.ip);
+      } catch {
+        // Email delivery is separate from profile persistence.
+      }
+    }
     res.json({ success: true, data: { user: toSafeUser(user) } });
   },
 );
@@ -146,6 +183,114 @@ export const resetPasswordHandler: RequestHandler = asyncHandler(
     res.json({
       success: true,
       data: { message: 'Password reset successfully' },
+    });
+  },
+);
+
+export const csrfToken: RequestHandler = (_req, res): void => {
+  const token = createCsrfToken();
+  res.cookie('daintyCsrfToken', token, {
+    httpOnly: false,
+    secure: env.NODE_ENV === 'production' || env.COOKIE_SAMESITE === 'none',
+    sameSite: env.COOKIE_SAMESITE,
+    domain: env.COOKIE_DOMAIN,
+    path: '/api',
+    maxAge: 60 * 60 * 1000,
+  });
+  res.json({ success: true, data: { csrfToken: token } });
+};
+
+export const verifyMfa: RequestHandler = asyncHandler(
+  async (req, res): Promise<void> => {
+    const input = req.body as MfaVerifyInput;
+    const user = await verifyLoginMfaChallenge(
+      input.challengeId,
+      input.code,
+      req.ip,
+      req.guestSessionId,
+    );
+    setAuthCookies(res, user);
+    res.json({
+      success: true,
+      data: {
+        user: toSafeUser(user),
+        permissions: ROLE_PERMISSIONS[user.role],
+      },
+    });
+  },
+);
+
+export const startMfaEnrollment: RequestHandler = asyncHandler(
+  async (req, res): Promise<void> => {
+    const body = req.body as { challengeId?: string };
+    const enrollment = body.challengeId
+      ? await beginMfaEnrollmentForChallenge(body.challengeId)
+      : await beginMfaEnrollment(getUser(req));
+    res.json({ success: true, data: enrollment });
+  },
+);
+
+export const confirmMfa: RequestHandler = asyncHandler(
+  async (req, res): Promise<void> => {
+    const body = req.body as { challengeId?: string; code: string };
+    if (body.challengeId) {
+      const result = await confirmMfaEnrollmentForChallenge(
+        body.challengeId,
+        body.code,
+        req.ip,
+      );
+      setAuthCookies(res, result.user);
+      res.json({
+        success: true,
+        data: {
+          recoveryCodes: result.recoveryCodes,
+          user: toSafeUser(result.user),
+          permissions: ROLE_PERMISSIONS[result.user.role],
+        },
+      });
+      return;
+    }
+    const result = await confirmMfaEnrollment(getUser(req), body.code);
+    setAuthCookies(res, getUser(req));
+    res.json({
+      success: true,
+      data: {
+        recoveryCodes: result.recoveryCodes,
+        user: toSafeUser(getUser(req)),
+      },
+    });
+  },
+);
+
+export const disableMfaHandler: RequestHandler = asyncHandler(
+  async (req, res): Promise<void> => {
+    const body = req.body as { code: string };
+    await disableMfa(getUser(req), body.code);
+    clearAuthCookies(res);
+    res.json({ success: true, data: { message: 'MFA disabled' } });
+  },
+);
+
+export const requestEmailVerificationHandler: RequestHandler =
+  asyncHandler(async (req, res): Promise<void> => {
+    const body = req.body as { email: string };
+    await requestEmailVerification(body.email, req.ip);
+    res.json({
+      success: true,
+      data: {
+        message:
+          'If an account exists and requires verification, a verification email has been sent.',
+      },
+    });
+  });
+
+export const verifyEmail: RequestHandler = asyncHandler(
+  async (req, res): Promise<void> => {
+    const body = req.body as { token: string };
+    await verifyEmailToken(body.token, req.ip);
+    res.json({
+      success: true,
+      data: { message: 'Email address verified successfully' },
     });
   },
 );

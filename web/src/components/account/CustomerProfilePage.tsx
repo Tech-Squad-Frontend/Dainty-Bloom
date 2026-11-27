@@ -203,6 +203,48 @@ function CustomerProfileForm({
     name: 'addresses',
   });
   const addresses = useWatch({ control, name: 'addresses' });
+  const [privacyPassword, setPrivacyPassword] = useState('');
+  const [privacyMessage, setPrivacyMessage] = useState('');
+  const [privacyBusy, setPrivacyBusy] = useState(false);
+
+  const requestExport = async () => {
+    setPrivacyBusy(true);
+    setPrivacyMessage('');
+    try {
+      const result = await api.requestDataExport();
+      setPrivacyMessage('Your export is ready for download.');
+      window.location.assign(result.downloadUrl);
+    } catch (error) {
+      setPrivacyMessage(
+        error instanceof ApiError
+          ? error.message
+          : 'The export could not be created.',
+      );
+    } finally {
+      setPrivacyBusy(false);
+    }
+  };
+
+  const requestDeletion = async () => {
+    if (!privacyPassword) {
+      setPrivacyMessage('Enter your password to request account deletion.');
+      return;
+    }
+    setPrivacyBusy(true);
+    setPrivacyMessage('');
+    try {
+      const result = await api.requestAccountDeletion(privacyPassword);
+      setPrivacyMessage(result.message);
+    } catch (error) {
+      setPrivacyMessage(
+        error instanceof ApiError
+          ? error.message
+          : 'Account deletion could not be scheduled.',
+      );
+    } finally {
+      setPrivacyBusy(false);
+    }
+  };
 
   const submit = handleSubmit(async (values) => {
     setErrorMessage('');
@@ -226,6 +268,7 @@ function CustomerProfileForm({
 
     try {
       const result = await api.updateProfile(input);
+      if (!result.user) throw new Error('Profile response was missing a user');
       queryClient.setQueryData<AuthResponse>(['auth', 'me'], (current) =>
         current ? { ...current, user: result.user } : current,
       );
@@ -462,6 +505,45 @@ function CustomerProfileForm({
             </Link>
           </div>
         </form>
+      </section>
+      <section
+        className="commerce-card customer-profile__card"
+        aria-labelledby="privacy-heading"
+      >
+        <div className="customer-profile__section-heading">
+          <h2 id="privacy-heading">Privacy and data</h2>
+          <p>Download your data or schedule account deletion.</p>
+        </div>
+        {privacyMessage ? (
+          <p className="commerce-alert" role="status" aria-live="polite">
+            {privacyMessage}
+          </p>
+        ) : null}
+        <div className="customer-profile__actions">
+          <Button
+            type="button"
+            variant="secondary"
+            loading={privacyBusy}
+            onClick={() => void requestExport()}
+          >
+            Download my data
+          </Button>
+          <Input
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            value={privacyPassword}
+            onChange={(event) => setPrivacyPassword(event.target.value)}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            loading={privacyBusy}
+            onClick={() => void requestDeletion()}
+          >
+            Schedule account deletion
+          </Button>
+        </div>
       </section>
     </div>
   );

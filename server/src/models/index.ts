@@ -47,3 +47,7 @@ export {
 } from './PaymentFulfillment';
 export { User, type IAddress, type IUser } from './User';
 export { Wishlist, type IWishlist } from './Wishlist';
+export {
+  PrivacyExport,
+  type IPrivacyExport,
+} from './PrivacyExport';

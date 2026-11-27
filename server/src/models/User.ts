@@ -33,6 +33,22 @@ export interface IUser extends Document {
   lockUntil?: Date;
   passwordResetTokenHash?: string;
   passwordResetExpiresAt?: Date;
+  emailVerificationTokenHash?: string;
+  emailVerificationExpiresAt?: Date;
+  mfaEnabled: boolean;
+  mfaSecretEncrypted?: string;
+  mfaRecoveryCodes: Array<{
+    codeHash: string;
+    usedAt?: Date;
+  }>;
+  mfaChallengeHash?: string;
+  mfaChallengeExpiresAt?: Date;
+  mfaChallengePurpose?: 'login' | 'setup';
+  mfaChallengeFailedAttempts: number;
+  recentMfaExpiresAt?: Date;
+  deletionRequestedAt?: Date;
+  deletionScheduledAt?: Date;
+  deletionStatus?: 'none' | 'requested' | 'completed';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -79,6 +95,44 @@ const userSchema = new Schema<IUser>(
     lockUntil: { type: Date, select: false },
     passwordResetTokenHash: { type: String, select: false },
     passwordResetExpiresAt: { type: Date, select: false },
+    emailVerificationTokenHash: { type: String, select: false },
+    emailVerificationExpiresAt: { type: Date, select: false },
+    mfaEnabled: { type: Boolean, default: false, index: true },
+    mfaSecretEncrypted: { type: String, select: false },
+    mfaRecoveryCodes: {
+      type: [
+        {
+          codeHash: { type: String, required: true, select: false },
+          usedAt: { type: Date, default: undefined, select: false },
+          _id: false,
+        },
+      ],
+      default: [],
+      select: false,
+    },
+    mfaChallengeHash: { type: String, select: false },
+    mfaChallengeExpiresAt: { type: Date, select: false },
+    mfaChallengePurpose: {
+      type: String,
+      enum: ['login', 'setup'],
+      select: false,
+    },
+    mfaChallengeFailedAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+      select: false,
+    },
+    recentMfaExpiresAt: { type: Date, select: false },
+    deletionRequestedAt: { type: Date, select: false },
+    deletionScheduledAt: { type: Date, select: false, index: true },
+    deletionStatus: {
+      type: String,
+      enum: ['none', 'requested', 'completed'],
+      default: 'none',
+      index: true,
+      select: false,
+    },
   },
   { timestamps: true },
 );

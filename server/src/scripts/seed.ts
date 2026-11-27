@@ -1,7 +1,6 @@
 import bcrypt from 'bcryptjs';
-import mongoose from 'mongoose';
-
 import { env } from '../config/env';
+import { connectDatabase, disconnectDatabase } from '../config/db';
 import { SiteSettings, User } from '../models';
 import { logger } from '../utils/logger';
 import { ensureBusinessCategories } from './categoryDefinitions';
@@ -16,7 +15,7 @@ async function seed(): Promise<void> {
     );
   }
 
-  await mongoose.connect(env.MONGODB_URI);
+  await connectDatabase();
 
   const email = env.SEED_ADMIN_EMAIL.toLowerCase();
   const existingAdmin = await User.findOne({ email });
@@ -60,5 +59,5 @@ void seed()
     process.exitCode = 1;
   })
   .finally(async () => {
-    await mongoose.disconnect();
+    await disconnectDatabase();
   });

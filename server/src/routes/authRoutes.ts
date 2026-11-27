@@ -11,9 +11,18 @@ import {
   resetPasswordHandler,
   updateMe,
   updatePassword,
+  verifyMfa,
+  startMfaEnrollment,
+  confirmMfa,
+  disableMfaHandler,
+  requestEmailVerificationHandler,
+  verifyEmail,
+  csrfToken,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/authenticate';
 import { guestSession } from '../middleware/guestSession';
+import { optionalAuth } from '../middleware/authenticate';
+import { requireRecentMfa } from '../middleware/requireRecentMfa';
 import { validate } from '../middleware/validate';
 import { AppError } from '../utils/AppError';
 import {
@@ -23,6 +32,12 @@ import {
   profileSchema,
   registerSchema,
   resetPasswordSchema,
+  mfaVerifySchema,
+  mfaEnrollmentStartSchema,
+  mfaEnrollmentConfirmSchema,
+  mfaDisableSchema,
+  emailVerificationSchema,
+  emailVerificationRequestSchema,
 } from '../validators/auth.validators';
 
 const authRateLimit = (limit: number) =>
@@ -40,6 +55,8 @@ const authRateLimit = (limit: number) =>
   });
 
 export const authRoutes = Router();
+
+authRoutes.get('/csrf', csrfToken);
 
 authRoutes.post(
   '/register',
@@ -61,6 +78,7 @@ authRoutes.patch('/me', authenticate, validate(profileSchema), updateMe);
 authRoutes.post(
   '/change-password',
   authenticate,
+  requireRecentMfa(),
   validate(changePasswordSchema),
   updatePassword,
 );
@@ -75,4 +93,46 @@ authRoutes.post(
   authRateLimit(5),
   validate(resetPasswordSchema),
   resetPasswordHandler,
+);
+
+authRoutes.post(
+  '/mfa/verify',
+  guestSession,
+  authRateLimit(10),
+  validate(mfaVerifySchema),
+  verifyMfa,
+);
+authRoutes.post(
+  '/mfa/enroll/start',
+  optionalAuth,
+  authRateLimit(10),
+  validate(mfaEnrollmentStartSchema),
+  startMfaEnrollment,
+);
+authRoutes.post(
+  '/mfa/enroll/confirm',
+  optionalAuth,
+  authRateLimit(10),
+  validate(mfaEnrollmentConfirmSchema),
+  confirmMfa,
+);
+authRoutes.post(
+  '/mfa/disable',
+  authenticate,
+  requireRecentMfa(),
+  authRateLimit(5),
+  validate(mfaDisableSchema),
+  disableMfaHandler,
+);
+authRoutes.post(
+  '/verify-email',
+  authRateLimit(5),
+  validate(emailVerificationSchema),
+  verifyEmail,
+);
+authRoutes.post(
+  '/verify-email/request',
+  authRateLimit(5),
+  validate(emailVerificationRequestSchema),
+  requestEmailVerificationHandler,
 );
