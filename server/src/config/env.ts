@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { z } from 'zod';
 import { loadEnvironment } from './loadEnvironment';
 import { validateStripeEnvironment } from './stripeEnvValidation';
@@ -5,7 +6,7 @@ import { validateMongoConnection } from './mongoConnection';
 
 loadEnvironment();
 
-const envSchema = z
+export const envSchema = z
   .object({
     NODE_ENV: z
       .enum(['development', 'test', 'production'])
@@ -144,6 +145,10 @@ const envSchema = z
     UPLOAD_SIGNING_SECRET: z
       .string()
       .min(32, 'UPLOAD_SIGNING_SECRET must be at least 32 characters'),
+    MALWARE_SCANNING_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     CLAMAV_HOST: z
       .string()
       .trim()
@@ -307,15 +312,21 @@ const envSchema = z
             : 'MONGODB_URI is invalid',
       });
     }
-    if (
-      configuration.NODE_ENV === 'production' &&
-      !configuration.CLAMAV_HOST
-    ) {
-      context.addIssue({
-        code: 'custom',
-        path: ['CLAMAV_HOST'],
-        message: 'CLAMAV_HOST is required in production',
-      });
+    if (configuration.MALWARE_SCANNING_ENABLED) {
+      if (!configuration.CLAMAV_HOST) {
+        context.addIssue({
+          code: 'custom',
+          path: ['CLAMAV_HOST'],
+          message: 'CLAMAV_HOST is required when MALWARE_SCANNING_ENABLED=true',
+        });
+      } else if (!isValidClamavHost(configuration.CLAMAV_HOST)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['CLAMAV_HOST'],
+          message:
+            'CLAMAV_HOST must be a hostname or IP address without a port',
+        });
+      }
     }
     if (
       configuration.NODE_ENV === 'production' &&
@@ -472,3 +483,17 @@ if (!envResult.success) {
 }
 
 export const env = envResult.data;
+
+function isValidClamavHost(host: string): boolean {
+  if (isIP(host) !== 0) return true;
+  const hostname = host.endsWith('.') ? host.slice(0, -1) : host;
+  if (hostname.length > 253) return false;
+  return hostname
+    .split('.')
+    .every(
+      (label) =>
+        label.length >= 1 &&
+        label.length <= 63 &&
+        /^[a-z\d](?:[a-z\d-]*[a-z\d])?$/i.test(label),
+    );
+}

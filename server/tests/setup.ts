@@ -1,4 +1,5 @@
 process.env.NODE_ENV = 'test';
+process.env.DOTENV_CONFIG_PATH = '';
 process.env.PORT = '3000';
 process.env.MONGODB_URI = 'mongodb://127.0.0.1:27017/dainty-bloom-test';
 process.env.CLIENT_URL = 'http://localhost:3001';

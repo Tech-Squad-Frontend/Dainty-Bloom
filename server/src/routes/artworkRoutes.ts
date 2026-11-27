@@ -18,6 +18,7 @@ import {
 } from '../middleware/memoryUpload';
 import { authenticate } from '../middleware/authenticate';
 import { requirePermission } from '../middleware/requirePermission';
+import { requireMalwareScanning } from '../middleware/requireMalwareScanning';
 import { validate } from '../middleware/validate';
 import {
   artworkIdSchema,
@@ -38,6 +39,7 @@ artworkRoutes.use(guestSession, optionalAuth);
 artworkRoutes.post(
   '/',
   artworkUploadLimiter,
+  requireMalwareScanning,
   singleMemoryUpload('file', artworkUploadLimit, 0),
   upload,
 );

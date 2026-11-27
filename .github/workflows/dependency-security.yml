@@ -1,6 +1,6 @@
 name: Dependency security
 
-on:
+"on":
   pull_request:
   push:
 

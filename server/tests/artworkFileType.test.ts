@@ -1,3 +1,5 @@
+import { createServer } from 'node:net';
+
 import { describe, expect, it } from 'vitest';
 
 import { env } from '../src/config/env';
@@ -87,18 +89,70 @@ describe('malware scanning', () => {
     });
   });
 
+  it('uses ClamAV INSTREAM and accepts a clean scanner response when enabled', async () => {
+    const originalNodeEnv = env.NODE_ENV;
+    const originalEnabled = env.MALWARE_SCANNING_ENABLED;
+    const originalHost = env.CLAMAV_HOST;
+    const originalPort = env.CLAMAV_PORT;
+    const scanner = createServer((socket) => {
+      let received = Buffer.alloc(0);
+      socket.on('data', (chunk) => {
+        received = Buffer.concat([received, chunk]);
+        if (
+          received.includes(Buffer.from('zINSTREAM\0')) &&
+          received.subarray(-4).every((byte) => byte === 0)
+        ) {
+          socket.end('stream: OK\0');
+        }
+      });
+    });
+    await new Promise<void>((resolve) => {
+      scanner.listen(0, '127.0.0.1', resolve);
+    });
+    const address = scanner.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Test ClamAV server did not bind a TCP port');
+    }
+
+    env.NODE_ENV = 'production';
+    env.MALWARE_SCANNING_ENABLED = true;
+    env.CLAMAV_HOST = '127.0.0.1';
+    env.CLAMAV_PORT = address.port;
+    try {
+      await expect(
+        scanBufferForMalware(Buffer.from('synthetic file bytes')),
+      ).resolves.toEqual({ status: 'clean' });
+    } finally {
+      env.NODE_ENV = originalNodeEnv;
+      env.MALWARE_SCANNING_ENABLED = originalEnabled;
+      env.CLAMAV_HOST = originalHost;
+      env.CLAMAV_PORT = originalPort;
+      await new Promise<void>((resolve, reject) => {
+        scanner.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    }
+  });
+
   it('fails closed outside test mode when no scanner host is configured', async () => {
     const originalNodeEnv = env.NODE_ENV;
+    const originalEnabled = env.MALWARE_SCANNING_ENABLED;
     const originalHost = env.CLAMAV_HOST;
     env.NODE_ENV = 'production';
+    env.MALWARE_SCANNING_ENABLED = true;
     env.CLAMAV_HOST = undefined;
     try {
-      await expect(scanBufferForMalware(Buffer.from('unknown'))).resolves.toEqual({
+      await expect(
+        scanBufferForMalware(Buffer.from('unknown')),
+      ).resolves.toEqual({
         status: 'failed',
         code: 'SCANNER_UNAVAILABLE',
       });
     } finally {
       env.NODE_ENV = originalNodeEnv;
+      env.MALWARE_SCANNING_ENABLED = originalEnabled;
       env.CLAMAV_HOST = originalHost;
     }
   });

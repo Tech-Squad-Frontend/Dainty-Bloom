@@ -51,6 +51,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  env.MALWARE_SCANNING_ENABLED = false;
   mocks.uploadStream.mockReset();
   mocks.destroy.mockReset();
   mocks.cloudinaryUrl.mockReset();

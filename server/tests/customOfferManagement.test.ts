@@ -60,6 +60,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  env.MALWARE_SCANNING_ENABLED = true;
   originalStorageDirectory = env.STORAGE_PRIVATE_DIR;
   originalStorageDriver = env.STORAGE_DRIVER;
   storageRoot = await mkdtemp(path.join(os.tmpdir(), 'dainty-offer-test-'));
@@ -85,6 +86,26 @@ afterAll(async () => {
 });
 
 describe('admin private custom offers', () => {
+  it('rejects mockup uploads before creating an offer when malware scanning is disabled', async () => {
+    env.MALWARE_SCANNING_ENABLED = false;
+    const admin = await createUser('admin');
+    const customer = await createUser('customer');
+    const acceptedRequest = await createRequest(customer);
+
+    const response = await submitOffer(acceptedRequest.id, admin.cookie);
+
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe('MALWARE_SCANNING_DISABLED');
+    expect(await Product.countDocuments()).toBe(0);
+    expect(await CustomOffer.countDocuments()).toBe(0);
+    expect(await ArtworkAsset.countDocuments()).toBe(0);
+    expect(
+      await Message.findById(acceptedRequest.id).then(
+        (message) => message?.customRequestStatus,
+      ),
+    ).toBe('accepted');
+  });
+
   it('rejects customer access to offer creation', async () => {
     const customer = await createUser('customer');
     const acceptedRequest = await createRequest(customer);

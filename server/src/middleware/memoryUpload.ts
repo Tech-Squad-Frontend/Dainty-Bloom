@@ -4,6 +4,7 @@ import type { RequestHandler } from 'express';
 import { env } from '../config/env';
 import { SiteSettings } from '../models';
 import { AppError } from '../utils/AppError';
+import { malwareScanningDisabledError } from './requireMalwareScanning';
 
 export function singleMemoryUpload(
   fieldName: string,
@@ -49,13 +50,26 @@ export function messageMemoryUpload(
   const middleware: RequestHandler = (req, res, next): void => {
     void maxBytes(req)
       .then((limit) => {
+        let fileRejectedBecauseScanningIsDisabled = false;
         multer({
           storage: multer.memoryStorage(),
           limits: { fileSize: limit, files: 1, fields: maxFields },
+          fileFilter: (_request, _file, callback) => {
+            if (!env.MALWARE_SCANNING_ENABLED) {
+              fileRejectedBecauseScanningIsDisabled = true;
+              callback(null, false);
+              return;
+            }
+            callback(null, true);
+          },
         }).fields([
           { name: 'file', maxCount: 1 },
           { name: 'referenceImage', maxCount: 1 },
         ])(req, res, (error: unknown) => {
+          if (fileRejectedBecauseScanningIsDisabled) {
+            next(malwareScanningDisabledError());
+            return;
+          }
           if (error) {
             if (error instanceof multer.MulterError) {
               const isTooLarge = error.code === 'LIMIT_FILE_SIZE';

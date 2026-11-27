@@ -83,6 +83,37 @@ describe('Security architecture invariants', () => {
     });
   });
 
+  it('gates only scanner-dependent upload routes and preserves existing staff permissions', () => {
+    const routes = collectRoutes();
+    const scannerGuardedRoutes = routes.filter(
+      (route) =>
+        route.method === 'POST' &&
+        route.protections.some(({ kind }) => kind === 'malware-scanning'),
+    );
+    expect(scannerGuardedRoutes).toHaveLength(2);
+
+    const unaffectedAdminUploads = routes.filter(
+      (route) =>
+        route.method === 'POST' &&
+        ((route.path.toLowerCase().includes('product') &&
+          route.path.includes('/media')) ||
+          (route.path.toLowerCase().includes('about') &&
+            route.path.includes('media'))),
+    );
+    expect(unaffectedAdminUploads.length).toBeGreaterThan(0);
+    for (const route of unaffectedAdminUploads) {
+      expect(
+        route.protections.some(({ kind }) => kind === 'malware-scanning'),
+      ).toBe(false);
+      expect(route.protections.some(({ kind }) => kind === 'auth')).toBe(true);
+      expect(
+        route.protections.some(
+          ({ kind }) => kind === 'permission' || kind === 'role',
+        ),
+      ).toBe(true);
+    }
+  });
+
   it('enforces stored payment totals, currency, amount and payable status', () => {
     const order = {
       _id: { toString: () => '507f1f77bcf86cd799439011' },

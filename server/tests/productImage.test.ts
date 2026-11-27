@@ -65,6 +65,7 @@ import {
   type ProductAdminInput,
 } from '../src/services/productAdmin.service';
 import { AppError } from '../src/utils/AppError';
+import { env } from '../src/config/env';
 
 const objectId = '0123456789abcdef01234567';
 const actor = {
@@ -81,6 +82,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  env.MALWARE_SCANNING_ENABLED = false;
   mocks.uploadStream.mockReset();
   mocks.destroy.mockReset();
   mocks.audit.mockReset();

@@ -77,6 +77,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   env.NODE_ENV = 'test';
+  env.MALWARE_SCANNING_ENABLED = true;
   resetSmtpTransport();
   createTransportMock.mockReturnValue({ sendMail: sendMailMock });
   sendMailMock.mockResolvedValue({ messageId: 'private-provider-response' });
@@ -98,6 +99,7 @@ afterEach(async () => {
   );
   vi.clearAllMocks();
   env.NODE_ENV = 'test';
+  env.MALWARE_SCANNING_ENABLED = true;
   resetSmtpTransport();
 });
 
@@ -107,6 +109,62 @@ afterAll(async () => {
 });
 
 describe('message intake workflows', () => {
+  it('rejects artwork and message attachments while allowing text-only messages when scanning is disabled', async () => {
+    env.MALWARE_SCANNING_ENABLED = false;
+    const storagePut = vi.spyOn(getStorageDriver(), 'put');
+    try {
+      const artworkResponse = await client()
+        .post('/api/artwork')
+        .set(CSRF_HEADER)
+        .attach('file', PNG, {
+          filename: 'customer-artwork.png',
+          contentType: 'image/png',
+        });
+
+      expect(artworkResponse.status).toBe(503);
+      expect(artworkResponse.body.error).toMatchObject({
+        code: 'MALWARE_SCANNING_DISABLED',
+        message:
+          'File uploads are temporarily unavailable because malware scanning is disabled.',
+      });
+      expect(await ArtworkAsset.countDocuments()).toBe(0);
+
+      const attachmentResponse = await postMessage({
+        name: 'Attachment Customer',
+        email: 'attachment@example.test',
+        subject: 'Artwork attachment',
+        message: 'Please review this artwork attachment.',
+        token: createMessageToken(Date.now() - 3_001),
+      }).attach('file', PNG, {
+        filename: 'message-artwork.png',
+        contentType: 'image/png',
+      });
+
+      expect(attachmentResponse.status).toBe(503);
+      expect(attachmentResponse.body.error.code).toBe(
+        'MALWARE_SCANNING_DISABLED',
+      );
+      expect(await Message.countDocuments()).toBe(0);
+      expect(await ArtworkAsset.countDocuments()).toBe(0);
+      expect(storagePut).not.toHaveBeenCalled();
+
+      const textOnlyResponse = await postMessage({
+        name: 'Text Only Customer',
+        email: 'text-only@example.test',
+        subject: 'Text-only enquiry',
+        message: 'This message has no file attachment.',
+        token: createMessageToken(Date.now() - 3_001),
+      });
+
+      expect(textOnlyResponse.status).toBe(200);
+      expect(await Message.countDocuments({ type: 'general' })).toBe(1);
+      expect(storagePut).not.toHaveBeenCalled();
+    } finally {
+      storagePut.mockRestore();
+      env.MALWARE_SCANNING_ENABLED = true;
+    }
+  });
+
   it('rejects custom requests from guests while keeping ordinary messages public', async () => {
     const guestResponse = await postMessage({
       name: 'Guest Requester',

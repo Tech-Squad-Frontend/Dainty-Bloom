@@ -45,40 +45,41 @@ offer; this workflow does not create products, orders, or payments.
 The checked-in `.env.example` contains placeholders only. Required values have
 no safe default; optional settings are shown with their defaults.
 
-| Variable                                                                                   | Purpose                                                                                   |
-| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `NODE_ENV`                                                                                 | `development`, `test`, or `production`; default `development`                             |
-| `PORT`                                                                                     | HTTP port; default `3000`                                                                 |
-| `MONGODB_URI`                                                                              | Required MongoDB connection string                                                        |
-| `CLIENT_URL`                                                                               | Required credentialed CORS origin                                                         |
-| `API_PUBLIC_URL`                                                                           | Required public API base URL for unsubscribe links                                        |
-| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`                                                  | Required independent secrets, at least 32 characters                                      |
-| `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL`                                                    | Access/refresh token lifetime; defaults `15m` / `7d`                                      |
-| `COOKIE_SECRET`                                                                            | Required signed-cookie secret, at least 32 characters                                     |
-| `COOKIE_SAMESITE`, `COOKIE_DOMAIN`                                                         | Cookie policy; default SameSite `lax`; domain optional                                    |
-| `TRUST_PROXY`                                                                              | Express proxy trust setting (`false`, `true`, hop count, or proxy value); default `false` |
-| `BCRYPT_COST`, `PASSWORD_RESET_TTL`                                                        | Password hash cost (default `12`) and reset lifetime (default `15m`)                      |
+| Variable                                                                                   | Purpose                                                                                    |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `NODE_ENV`                                                                                 | `development`, `test`, or `production`; default `development`                              |
+| `PORT`                                                                                     | HTTP port; default `3000`                                                                  |
+| `MONGODB_URI`                                                                              | Required MongoDB connection string                                                         |
+| `CLIENT_URL`                                                                               | Required credentialed CORS origin                                                          |
+| `API_PUBLIC_URL`                                                                           | Required public API base URL for unsubscribe links                                         |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`                                                  | Required independent secrets, at least 32 characters                                       |
+| `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL`                                                    | Access/refresh token lifetime; defaults `15m` / `7d`                                       |
+| `COOKIE_SECRET`                                                                            | Required signed-cookie secret, at least 32 characters                                      |
+| `COOKIE_SAMESITE`, `COOKIE_DOMAIN`                                                         | Cookie policy; default SameSite `lax`; domain optional                                     |
+| `TRUST_PROXY`                                                                              | Express proxy trust setting (`false`, `true`, hop count, or proxy value); default `false`  |
+| `BCRYPT_COST`, `PASSWORD_RESET_TTL`                                                        | Password hash cost (default `12`) and reset lifetime (default `15m`)                       |
 | `EMAIL_VERIFICATION_TTL`, `MFA_ENCRYPTION_KEY`, `MFA_CHALLENGE_TTL`                        | Email verification lifetime, AES MFA secret key, and MFA challenge lifetime                |
-| `DATA_ENCRYPTION_KEY`, `DATA_ENCRYPTION_PREVIOUS_KEYS`                                      | 32-byte AES field/export key and comma-separated previous rotation keys                    |
+| `DATA_ENCRYPTION_KEY`, `DATA_ENCRYPTION_PREVIOUS_KEYS`                                     | 32-byte AES field/export key and comma-separated previous rotation keys                    |
 | `PRIVACY_EXPORT_TTL`, `ACCOUNT_DELETION_GRACE_DAYS`                                        | Export lifetime and staged account-deletion grace period                                   |
 | `PASSWORD_RESET_RETENTION_DAYS`, `GUEST_SESSION_RETENTION_DAYS`                            | Password-reset and guest-session retention policies                                        |
 | `UNATTACHED_ARTWORK_RETENTION_DAYS`, `AUDIT_LOG_RETENTION_DAYS`                            | Unattached artwork cleanup and audit-retention target                                      |
-| `CART_MAX_QUANTITY`                                                                        | Per-line cart cap; default `99`                                                           |
-| `UPLOAD_MAX_BYTES`, `PRODUCT_IMAGE_MAX_BYTES`                                              | Private artwork / product image size limits; defaults `10485760`                          |
-| `CLAMAV_HOST`, `CLAMAV_PORT`, `CLAMAV_TIMEOUT_MS`                                           | ClamAV INSTREAM scanner host, port, and timeout; production requires host                  |
-| `MAX_CONCURRENT_ARTWORK_UPLOADS`, `ARTWORK_PROCESSING_TIMEOUT_MS`, `ARTWORK_MAX_PIXELS`      | Artwork concurrency, processing timeout, and decompression-pixel limits                   |
-| `STORAGE_DRIVER`, `STORAGE_PRIVATE_DIR`                                                    | Artwork backend (`local` or `cloudinary`) and local private path; defaults to `local`     |
-| `UPLOAD_SIGNING_SECRET`                                                                    | Required signing secret, at least 32 characters                                           |
-| `PAYMENT_PROVIDER`                                                                         | `manual` (default) or `stripe`                                                            |
-| `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`                     | All required when Stripe is selected; secret and publishable key modes must match         |
-| `STRIPE_CHECKOUT_EXPIRY_MINUTES`, `UNPAID_ORDER_EXPIRY_HOURS`                              | Checkout expiry (default 30, minimum 30) and unpaid-order age (default 48)                |
-| `CLOUDINARY_URL` or `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary credentials for product images and optional private artwork storage            |
-| `DEFAULT_CURRENCY`                                                                         | Must be `GBP`; defaults to `GBP`                                                          |
-| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`                                                  | Optional seed-admin credentials; required by `seed`                                       |
-| `CONTACT_RECIPIENT_EMAIL`                                                                  | Explicit destination for general enquiries; required with SMTP settings                   |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`                                                    | SMTP server and TLS mode; Gmail uses `smtp.gmail.com`, port `587`, `false` (STARTTLS)     |
-| `SMTP_USERNAME`, `SMTP_PASSWORD`                                                           | Gmail account and Google App Password; both required for Gmail SMTP                       |
-| `SMTP_FROM`                                                                                | Verified sender accepted by SMTP; intended business sender is `info@daintybloome.com`     |
+| `CART_MAX_QUANTITY`                                                                        | Per-line cart cap; default `99`                                                            |
+| `UPLOAD_MAX_BYTES`, `PRODUCT_IMAGE_MAX_BYTES`                                              | Private artwork / product image size limits; defaults `10485760`                           |
+| `MALWARE_SCANNING_ENABLED`                                                                 | Enables ClamAV-scanned customer artwork uploads; defaults to `false`                       |
+| `CLAMAV_HOST`, `CLAMAV_PORT`, `CLAMAV_TIMEOUT_MS`                                          | ClamAV INSTREAM scanner host, port, and timeout; host is required when scanning is enabled |
+| `MAX_CONCURRENT_ARTWORK_UPLOADS`, `ARTWORK_PROCESSING_TIMEOUT_MS`, `ARTWORK_MAX_PIXELS`    | Artwork concurrency, processing timeout, and decompression-pixel limits                    |
+| `STORAGE_DRIVER`, `STORAGE_PRIVATE_DIR`                                                    | Artwork backend (`local` or `cloudinary`) and local private path; defaults to `local`      |
+| `UPLOAD_SIGNING_SECRET`                                                                    | Required signing secret, at least 32 characters                                            |
+| `PAYMENT_PROVIDER`                                                                         | `manual` (default) or `stripe`                                                             |
+| `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`                     | All required when Stripe is selected; secret and publishable key modes must match          |
+| `STRIPE_CHECKOUT_EXPIRY_MINUTES`, `UNPAID_ORDER_EXPIRY_HOURS`                              | Checkout expiry (default 30, minimum 30) and unpaid-order age (default 48)                 |
+| `CLOUDINARY_URL` or `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary credentials for product images and optional private artwork storage             |
+| `DEFAULT_CURRENCY`                                                                         | Must be `GBP`; defaults to `GBP`                                                           |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`                                                  | Optional seed-admin credentials; required by `seed`                                        |
+| `CONTACT_RECIPIENT_EMAIL`                                                                  | Explicit destination for general enquiries; required with SMTP settings                    |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`                                                    | SMTP server and TLS mode; Gmail uses `smtp.gmail.com`, port `587`, `false` (STARTTLS)      |
+| `SMTP_USERNAME`, `SMTP_PASSWORD`                                                           | Gmail account and Google App Password; both required for Gmail SMTP                        |
+| `SMTP_FROM`                                                                                | Verified sender accepted by SMTP; intended business sender is `info@daintybloome.com`      |
 
 The SMTP settings are shared by production transactional mail and general
 contact-enquiry delivery. `CONTACT_RECIPIENT_EMAIL` is only the business
@@ -100,11 +101,21 @@ When using Gmail SMTP, the API requires `SMTP_FROM` to match
 
 ### Artwork malware scanning
 
-Uploads are scanned with ClamAV before storage or staff processing. `CLAMAV_HOST`,
-`CLAMAV_PORT`, `CLAMAV_TIMEOUT_MS`, `MAX_CONCURRENT_ARTWORK_UPLOADS`,
-`ARTWORK_PROCESSING_TIMEOUT_MS`, and `ARTWORK_MAX_PIXELS` control the scanner and
-resource boundaries. Production requires `CLAMAV_HOST`; scanner outages and
-timeouts reject uploads rather than marking them safe.
+`MALWARE_SCANNING_ENABLED=false` is the temporary deployment mode for environments
+without a reachable ClamAV service. In this mode, customer artwork, message
+attachments, and private-offer mockup uploads are unavailable; file uploads are
+rejected before Multer buffers them. Text-only message submissions remain
+available. Product-media and About-media uploads remain available under their
+existing authorization, validation, and storage controls; they do not use
+ClamAV.
+
+To restore scanned customer uploads, deploy a reachable ClamAV service, configure
+`CLAMAV_HOST` (and `CLAMAV_PORT` if it is not listening on the default port), and
+set `MALWARE_SCANNING_ENABLED=true`. `CLAMAV_TIMEOUT_MS`,
+`MAX_CONCURRENT_ARTWORK_UPLOADS`, `ARTWORK_PROCESSING_TIMEOUT_MS`, and
+`ARTWORK_MAX_PIXELS` control scanner and processing resource boundaries. When
+enabled, scanner outages and timeouts reject uploads rather than marking them
+safe.
 
 Artwork records have `scanStatus` values for `pending`, `scanning`, `clean`,
 `infected`, `failed`, and `legacy_unverified`. Existing records remain
@@ -287,7 +298,7 @@ use a replica set or sharded cluster). No HTTP setup route is provided.
 The route inventory should be regenerated after route or middleware changes and
 reviewed before release.
 
-## USD-to-GBP migration
+## USD-to-GBP migration safeguards
 
 The store currency is GBP. The one-time migration uses the approved fixed rate
 of `1 USD = 0.752627 GBP`, converts integer minor-unit amounts with exact

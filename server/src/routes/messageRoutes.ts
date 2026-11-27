@@ -30,6 +30,7 @@ import {
 } from '../middleware/memoryUpload';
 import { requirePermission } from '../middleware/requirePermission';
 import { requireRole } from '../middleware/requireRole';
+import { requireMalwareScanning } from '../middleware/requireMalwareScanning';
 import { validate } from '../middleware/validate';
 import {
   createMessageSchema,
@@ -195,6 +196,7 @@ adminMessageRoutes.post(
 adminMessageRoutes.post(
   '/:id/custom-offer',
   requireRole('admin'),
+  requireMalwareScanning,
   singleMemoryUpload('file', artworkUploadLimit, 16),
   validate(createCustomOfferSchema),
   createCustomOffer,
