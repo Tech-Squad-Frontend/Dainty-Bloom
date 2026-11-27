@@ -106,7 +106,7 @@ afterEach(async () => {
 
 afterAll(async () => {
   await mongoose.disconnect();
-  await mongo.stop();
+  if (mongo) await mongo.stop();
 });
 
 describe('private-offer Stripe checkout recovery', () => {

@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
+import { TOTP } from 'otpauth';
 import request from 'supertest';
 import {
   afterAll,
@@ -26,6 +27,7 @@ import { env } from '../src/config/env';
 import { app } from '../src/app';
 import { listAdminOrders } from '../src/services/adminOrder.service';
 import { adminOrderListSchema } from '../src/validators/order.validators';
+import { encryptMfaSecret } from '../src/utils/mfa';
 import {
   AuditEvent,
   ArtworkAsset,
@@ -41,9 +43,13 @@ import {
 } from '../src/models';
 import { resetSmtpTransport } from '../src/services/mailer/smtpTransport';
 
-const CSRF_HEADER = { 'X-Requested-With': 'dainty-bloom' };
+const CSRF_HEADER: Record<string, string> = {
+  'X-Requested-With': 'dainty-bloom',
+};
 const PASSWORD = 'a-secure-password-123';
+const MFA_TEST_SECRET = 'JBSWY3DPEHPK3PXP';
 let mongo: MongoMemoryServer;
+let csrfCookie = '';
 
 beforeAll(async () => {
   mongo = await MongoMemoryServer.create();
@@ -61,6 +67,17 @@ beforeAll(async () => {
     Subscriber.init(),
     User.init(),
   ]);
+
+  const csrf = await request(app).get('/api/auth/csrf');
+  const csrfToken = csrf.body.data.csrfToken as string;
+  const issuedCookie = (csrf.headers['set-cookie'] as string[] | undefined)
+    ?.find((cookie) => cookie.startsWith('daintyCsrfToken='))
+    ?.split(';')[0];
+  if (!issuedCookie) {
+    throw new Error('CSRF endpoint did not issue the expected cookie');
+  }
+  csrfCookie = issuedCookie;
+  CSRF_HEADER['X-CSRF-Token'] = csrfToken;
 });
 
 beforeEach(() => {
@@ -83,7 +100,7 @@ afterEach(async () => {
 
 afterAll(async () => {
   await mongoose.disconnect();
-  await mongo.stop();
+  if (mongo) await mongo.stop();
 });
 
 describe('admin operational workflows', () => {
@@ -91,6 +108,7 @@ describe('admin operational workflows', () => {
     env.NODE_ENV = 'production';
     const response = await request(app)
       .post('/api/newsletter/subscribe')
+      .set('Cookie', csrfCookie)
       .set(CSRF_HEADER)
       .send({
         email: 'subscriber@example.test',
@@ -683,6 +701,7 @@ describe('admin operational workflows', () => {
 
     const unauthenticated = await request(app)
       .post(`/api/products/${product.slug}/reviews`)
+      .set('Cookie', csrfCookie)
       .set(CSRF_HEADER)
       .send(body);
     expect(unauthenticated.status).toBe(401);
@@ -826,40 +845,61 @@ async function signInWithIdentity(
   });
   if (role !== 'customer') {
     user.mfaEnabled = true;
-    user.recentMfaExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    user.mfaSecretEncrypted = encryptMfaSecret(MFA_TEST_SECRET);
     await user.save();
   }
-  const csrf = await request(app).get('/api/auth/csrf');
-  const csrfToken = csrf.body.data.csrfToken as string;
-  const csrfCookie = (csrf.headers['set-cookie'] as string[])
-    .find((cookie) => cookie.startsWith('daintyCsrfToken='))
-    ?.split(';')[0];
-  const response = await request(app)
+  const loginResponse = await request(app)
     .post('/api/auth/login')
     .set(CSRF_HEADER)
-    .set('X-CSRF-Token', csrfToken)
-    .set('Cookie', csrfCookie ?? '')
+    .set('Cookie', csrfCookie)
     .send({
       email,
       password: PASSWORD,
       portal: role === 'customer' ? 'customer' : 'admin',
     });
-  if (response.status !== 200) {
-    throw new Error(`Test user login failed with status ${response.status}`);
+  if (loginResponse.status !== 200) {
+    throw new Error(
+      `Test user login failed with status ${loginResponse.status}`,
+    );
   }
-  const cookies = response.headers['set-cookie'];
-  if (!Array.isArray(cookies))
-    throw new Error('Login did not set auth cookies');
+  let authenticatedResponse = loginResponse;
+  if (role !== 'customer') {
+    if (loginResponse.body.data.mfaRequired !== true) {
+      throw new Error('Staff login did not return an MFA challenge');
+    }
+    const challengeId = loginResponse.body.data.challenge.id as string;
+    authenticatedResponse = await request(app)
+      .post('/api/auth/mfa/verify')
+      .set(CSRF_HEADER)
+      .set('Cookie', csrfCookie)
+      .send({
+        challengeId,
+        code: TOTP.generate({ secret: MFA_TEST_SECRET }),
+      });
+    if (authenticatedResponse.status !== 200) {
+      throw new Error(
+        `Test user MFA verification failed with status ${authenticatedResponse.status}`,
+      );
+    }
+  }
+  const cookies = authenticatedResponse.headers['set-cookie'];
+  if (!Array.isArray(cookies)) {
+    throw new Error('Authenticated login did not set auth cookies');
+  }
+  const authCookie = cookies
+    .filter(
+      (cookie) =>
+        /^(daintyAccessToken|daintyRefreshToken)=/.test(cookie) &&
+        cookie.split(';')[0].length > cookie.split(';')[0].indexOf('=') + 1,
+    )
+    .map((cookie) => cookie.split(';')[0])
+    .join('; ');
+  if (!authCookie) {
+    throw new Error('Authenticated login did not issue an auth token');
+  }
   return {
     userId: user._id.toString(),
-    cookie: cookies
-      .filter(
-        (cookie) =>
-          /^(daintyAccessToken|daintyRefreshToken)=/.test(cookie) &&
-          cookie.split(';')[0].length > cookie.split(';')[0].indexOf('=') + 1,
-      )
-      .map((cookie) => cookie.split(';')[0])
-      .join('; '),
+    cookie: `${authCookie}; ${csrfCookie}`,
   };
 }
 
