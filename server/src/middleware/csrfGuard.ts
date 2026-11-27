@@ -43,16 +43,14 @@ export const csrfGuard: RequestHandler = (req, _res, next): void => {
 
   const headerToken = req.get('X-CSRF-Token');
   const cookieToken = req.cookies?.daintyCsrfToken as string | undefined;
-  if (headerToken || cookieToken) {
-    if (
-      !headerToken ||
-      !cookieToken ||
-      headerToken !== cookieToken ||
-      !verifyCsrfToken(headerToken)
-    ) {
-      next(new AppError('CSRF token is invalid', 403, 'CSRF_TOKEN_INVALID'));
-      return;
-    }
+  if (
+    !headerToken ||
+    !cookieToken ||
+    headerToken !== cookieToken ||
+    !verifyCsrfToken(headerToken)
+  ) {
+    next(new AppError('CSRF token is invalid', 403, 'CSRF_TOKEN_INVALID'));
+    return;
   }
 
   next();

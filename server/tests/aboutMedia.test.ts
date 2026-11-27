@@ -403,15 +403,27 @@ async function signIn(
   role: 'admin' | 'customer' | 'production' | 'support',
 ): Promise<string> {
   const email = `${role}-${Math.random().toString(36).slice(2)}@example.test`;
-  await User.create({
+  const user = await User.create({
     name: 'About Media Test User',
     email,
     passwordHash: await bcrypt.hash(PASSWORD, env.BCRYPT_COST),
     role,
   });
+  if (role !== 'customer') {
+    user.mfaEnabled = true;
+    user.recentMfaExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+  }
+  const csrf = await request(app).get('/api/auth/csrf');
+  const csrfToken = csrf.body.data.csrfToken as string;
+  const csrfCookie = (csrf.headers['set-cookie'] as string[])
+    .find((cookie) => cookie.startsWith('daintyCsrfToken='))
+    ?.split(';')[0];
   const response = await request(app)
     .post('/api/auth/login')
     .set(CSRF_HEADER)
+    .set('X-CSRF-Token', csrfToken)
+    .set('Cookie', csrfCookie ?? '')
     .send({
       email,
       password: PASSWORD,

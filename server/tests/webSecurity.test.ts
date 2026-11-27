@@ -81,6 +81,11 @@ describe('Web application security headers and request guards', () => {
   }, 15_000);
 
   it('rejects NoSQL operators, prototype keys, and deeply nested JSON', async () => {
+    const issued = await request(app).get('/api/auth/csrf');
+    const token = issued.body.data.csrfToken as string;
+    const csrfCookie = (issued.headers['set-cookie'] as string[])
+      .find((value) => value.startsWith('daintyCsrfToken='))
+      ?.split(';')[0];
     for (const body of [
       { email: { $gt: '' }, password: 'password' },
       { email: 'customer@example.com', password: 'password', constructor: {} },
@@ -89,6 +94,8 @@ describe('Web application security headers and request guards', () => {
       const response = await request(app)
         .post('/api/auth/login')
         .set(CSRF_HEADER)
+        .set('X-CSRF-Token', token)
+        .set('Cookie', csrfCookie ?? '')
         .send(body);
       expect(response.status).toBe(400);
       expect(response.body.error.code).toMatch(/INVALID_JSON|VALIDATION_ERROR/);
@@ -96,9 +103,16 @@ describe('Web application security headers and request guards', () => {
   });
 
   it('rejects unexpected registration fields', async () => {
+    const issued = await request(app).get('/api/auth/csrf');
+    const token = issued.body.data.csrfToken as string;
+    const csrfCookie = (issued.headers['set-cookie'] as string[])
+      .find((value) => value.startsWith('daintyCsrfToken='))
+      ?.split(';')[0];
     const response = await request(app)
       .post('/api/auth/register')
       .set(CSRF_HEADER)
+      .set('X-CSRF-Token', token)
+      .set('Cookie', csrfCookie ?? '')
       .send({
         name: 'Test Customer',
         email: 'customer@example.com',

@@ -62,12 +62,15 @@ describe('MongoDB connection validation', () => {
     }
   });
 
-  it('requires an explicit database name', () => {
-    expect(() =>
-      validateMongoConnection(
-        'mongodb://app-user:password@db.example.test/',
-        'production',
-      ),
-    ).toThrow(/database/);
+  it('requires an explicit database name for host-only and trailing-slash URIs', () => {
+    for (const uri of [
+      'mongodb+srv://app-user:dummy-password@cluster.example.test',
+      'mongodb+srv://app-user:dummy-password@cluster.example.test/',
+      'mongodb://app-user:dummy-password@db.example.test/',
+    ]) {
+      expect(() => validateMongoConnection(uri, 'production')).toThrow(
+        /database/,
+      );
+    }
   });
 });

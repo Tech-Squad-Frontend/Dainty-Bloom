@@ -165,69 +165,83 @@ export function uploadAdminProductImage(
   onProgress: (progress: number) => void,
 ): Promise<AdminProduct['media'][number]> {
   return new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open(
-      'POST',
-      `/api/admin/products/${encodeURIComponent(productId)}/media`,
-    );
-    request.withCredentials = true;
-    request.setRequestHeader('X-Requested-With', 'dainty-bloom');
-    request.upload.onprogress = (event) => {
-      if (event.lengthComputable)
-        onProgress(Math.round((event.loaded / event.total) * 100));
-    };
-    request.onerror = () =>
-      reject(
-        new ApiError('The API could not be reached.', 'NETWORK_ERROR', null, 0),
-      );
-    request.onload = () => {
-      let payload: unknown;
-      try {
-        payload = JSON.parse(request.responseText) as unknown;
-      } catch {
-        reject(invalidResponseError(request.status));
-        return;
-      }
-      if (request.status < 200 || request.status >= 300) {
-        const error =
-          isRecord(payload) && isRecord(payload.error)
-            ? payload.error
-            : undefined;
-        reject(
-          new ApiError(
-            typeof error?.message === 'string'
-              ? error.message
-              : 'The request could not be completed.',
-            typeof error?.code === 'string' ? error.code : 'REQUEST_FAILED',
-            error?.details ?? null,
-            request.status,
-          ),
+    void getCsrfToken()
+      .then((csrfToken) => {
+        const request = new XMLHttpRequest();
+        request.open(
+          'POST',
+          `/api/admin/products/${encodeURIComponent(productId)}/media`,
         );
-        return;
-      }
-      if (
-        !isRecord(payload) ||
-        payload.success !== true ||
-        !isRecord(payload.data)
-      ) {
-        reject(invalidResponseError(request.status));
-        return;
-      }
-      try {
-        resolve(
-          unwrapObject<AdminProduct['media'][number]>(payload.data, 'media'),
-        );
-      } catch (error) {
-        reject(error);
-      }
-    };
-    const body = new FormData();
-    body.append('file', input.file);
-    body.append('alt', input.alt);
-    body.append('view', input.view);
-    body.append('isPrimary', String(input.isPrimary));
-    if (input.lightingState) body.append('lightingState', input.lightingState);
-    request.send(body);
+        request.withCredentials = true;
+        request.setRequestHeader('X-Requested-With', 'dainty-bloom');
+        request.setRequestHeader('X-CSRF-Token', csrfToken);
+        request.upload.onprogress = (event) => {
+          if (event.lengthComputable)
+            onProgress(Math.round((event.loaded / event.total) * 100));
+        };
+        request.onerror = () =>
+          reject(
+            new ApiError(
+              'The API could not be reached.',
+              'NETWORK_ERROR',
+              null,
+              0,
+            ),
+          );
+        request.onload = () => {
+          let payload: unknown;
+          try {
+            payload = JSON.parse(request.responseText) as unknown;
+          } catch {
+            reject(invalidResponseError(request.status));
+            return;
+          }
+          if (request.status < 200 || request.status >= 300) {
+            const error =
+              isRecord(payload) && isRecord(payload.error)
+                ? payload.error
+                : undefined;
+            reject(
+              new ApiError(
+                typeof error?.message === 'string'
+                  ? error.message
+                  : 'The request could not be completed.',
+                typeof error?.code === 'string' ? error.code : 'REQUEST_FAILED',
+                error?.details ?? null,
+                request.status,
+              ),
+            );
+            return;
+          }
+          if (
+            !isRecord(payload) ||
+            payload.success !== true ||
+            !isRecord(payload.data)
+          ) {
+            reject(invalidResponseError(request.status));
+            return;
+          }
+          try {
+            resolve(
+              unwrapObject<AdminProduct['media'][number]>(
+                payload.data,
+                'media',
+              ),
+            );
+          } catch (error) {
+            reject(error);
+          }
+        };
+        const body = new FormData();
+        body.append('file', input.file);
+        body.append('alt', input.alt);
+        body.append('view', input.view);
+        body.append('isPrimary', String(input.isPrimary));
+        if (input.lightingState)
+          body.append('lightingState', input.lightingState);
+        request.send(body);
+      })
+      .catch((error) => reject(error));
   });
 }
 
@@ -241,65 +255,75 @@ export function uploadAdminAboutMedia(
   onProgress: (progress: number) => void,
 ): Promise<AdminAboutMedia> {
   return new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open('POST', '/api/admin/about-media');
-    request.withCredentials = true;
-    request.setRequestHeader('X-Requested-With', 'dainty-bloom');
-    request.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        onProgress(Math.round((event.loaded / event.total) * 100));
-      }
-    };
-    request.onerror = () =>
-      reject(
-        new ApiError('The API could not be reached.', 'NETWORK_ERROR', null, 0),
-      );
-    request.onload = () => {
-      let payload: unknown;
-      try {
-        payload = JSON.parse(request.responseText) as unknown;
-      } catch {
-        reject(invalidResponseError(request.status));
-        return;
-      }
-      if (request.status < 200 || request.status >= 300) {
-        const error =
-          isRecord(payload) && isRecord(payload.error)
-            ? payload.error
-            : undefined;
-        reject(
-          new ApiError(
-            typeof error?.message === 'string'
-              ? error.message
-              : 'The request could not be completed.',
-            typeof error?.code === 'string' ? error.code : 'REQUEST_FAILED',
-            error?.details ?? null,
-            request.status,
-          ),
-        );
-        return;
-      }
-      if (
-        !isRecord(payload) ||
-        payload.success !== true ||
-        !isRecord(payload.data)
-      ) {
-        reject(invalidResponseError(request.status));
-        return;
-      }
-      try {
-        resolve(unwrapObject<AdminAboutMedia>(payload.data, 'media'));
-      } catch (error) {
-        reject(error);
-      }
-    };
-    const body = new FormData();
-    body.append('file', input.file);
-    if (input.title !== undefined) body.append('title', input.title);
-    if (input.description !== undefined)
-      body.append('description', input.description);
-    if (input.altText !== undefined) body.append('altText', input.altText);
-    request.send(body);
+    void getCsrfToken()
+      .then((csrfToken) => {
+        const request = new XMLHttpRequest();
+        request.open('POST', '/api/admin/about-media');
+        request.withCredentials = true;
+        request.setRequestHeader('X-Requested-With', 'dainty-bloom');
+        request.setRequestHeader('X-CSRF-Token', csrfToken);
+        request.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            onProgress(Math.round((event.loaded / event.total) * 100));
+          }
+        };
+        request.onerror = () =>
+          reject(
+            new ApiError(
+              'The API could not be reached.',
+              'NETWORK_ERROR',
+              null,
+              0,
+            ),
+          );
+        request.onload = () => {
+          let payload: unknown;
+          try {
+            payload = JSON.parse(request.responseText) as unknown;
+          } catch {
+            reject(invalidResponseError(request.status));
+            return;
+          }
+          if (request.status < 200 || request.status >= 300) {
+            const error =
+              isRecord(payload) && isRecord(payload.error)
+                ? payload.error
+                : undefined;
+            reject(
+              new ApiError(
+                typeof error?.message === 'string'
+                  ? error.message
+                  : 'The request could not be completed.',
+                typeof error?.code === 'string' ? error.code : 'REQUEST_FAILED',
+                error?.details ?? null,
+                request.status,
+              ),
+            );
+            return;
+          }
+          if (
+            !isRecord(payload) ||
+            payload.success !== true ||
+            !isRecord(payload.data)
+          ) {
+            reject(invalidResponseError(request.status));
+            return;
+          }
+          try {
+            resolve(unwrapObject<AdminAboutMedia>(payload.data, 'media'));
+          } catch (error) {
+            reject(error);
+          }
+        };
+        const body = new FormData();
+        body.append('file', input.file);
+        if (input.title !== undefined) body.append('title', input.title);
+        if (input.description !== undefined)
+          body.append('description', input.description);
+        if (input.altText !== undefined) body.append('altText', input.altText);
+        request.send(body);
+      })
+      .catch((error) => reject(error));
   });
 }
 
@@ -308,56 +332,66 @@ export function uploadArtwork(
   onProgress: (progress: number) => void,
 ): Promise<ArtworkMetadata> {
   return new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open('POST', '/api/artwork');
-    request.withCredentials = true;
-    request.setRequestHeader('X-Requested-With', 'dainty-bloom');
-    request.upload.onprogress = (event) => {
-      if (event.lengthComputable)
-        onProgress(Math.round((event.loaded / event.total) * 100));
-    };
-    request.onerror = () =>
-      reject(
-        new ApiError('The API could not be reached.', 'NETWORK_ERROR', null, 0),
-      );
-    request.onload = () => {
-      let payload: unknown;
-      try {
-        payload = JSON.parse(request.responseText) as unknown;
-      } catch {
-        reject(invalidResponseError(request.status));
-        return;
-      }
-      if (
-        request.status < 200 ||
-        request.status >= 300 ||
-        !isRecord(payload) ||
-        payload.success !== true ||
-        !isRecord(payload.data)
-      ) {
-        const error =
-          isRecord(payload) && isRecord(payload.error)
-            ? payload.error
-            : undefined;
-        reject(
-          new ApiError(
-            typeof error?.message === 'string'
-              ? error.message
-              : 'The upload could not be completed.',
-            typeof error?.code === 'string'
-              ? error.code
-              : 'INVALID_API_RESPONSE',
-            error?.details ?? null,
-            request.status,
-          ),
-        );
-        return;
-      }
-      resolve(payload.data as unknown as ArtworkMetadata);
-    };
-    const body = new FormData();
-    body.append('file', file);
-    request.send(body);
+    void getCsrfToken()
+      .then((csrfToken) => {
+        const request = new XMLHttpRequest();
+        request.open('POST', '/api/artwork');
+        request.withCredentials = true;
+        request.setRequestHeader('X-Requested-With', 'dainty-bloom');
+        request.setRequestHeader('X-CSRF-Token', csrfToken);
+        request.upload.onprogress = (event) => {
+          if (event.lengthComputable)
+            onProgress(Math.round((event.loaded / event.total) * 100));
+        };
+        request.onerror = () =>
+          reject(
+            new ApiError(
+              'The API could not be reached.',
+              'NETWORK_ERROR',
+              null,
+              0,
+            ),
+          );
+        request.onload = () => {
+          let payload: unknown;
+          try {
+            payload = JSON.parse(request.responseText) as unknown;
+          } catch {
+            reject(invalidResponseError(request.status));
+            return;
+          }
+          if (
+            request.status < 200 ||
+            request.status >= 300 ||
+            !isRecord(payload) ||
+            payload.success !== true ||
+            !isRecord(payload.data)
+          ) {
+            const error =
+              isRecord(payload) && isRecord(payload.error)
+                ? payload.error
+                : undefined;
+            reject(
+              new ApiError(
+                typeof error?.message === 'string'
+                  ? error.message
+                  : 'The upload could not be completed.',
+                typeof error?.code === 'string'
+                  ? error.code
+                  : 'INVALID_API_RESPONSE',
+                error?.details ?? null,
+                request.status,
+              ),
+            );
+            return;
+          }
+          resolve(payload.data as unknown as ArtworkMetadata);
+        };
+        const body = new FormData();
+        body.append('file', file);
+        request.send(body);
+      })
+      .catch((error) => reject(error));
   });
 }
 
@@ -380,13 +414,20 @@ async function getCsrfToken(): Promise<string> {
     credentials: 'include',
   })
     .then(async (response) => {
-      if (!response.ok) throw new ApiError('CSRF setup failed', 'CSRF_FAILED', null, response.status);
+      if (!response.ok)
+        throw new ApiError(
+          'CSRF setup failed',
+          'CSRF_FAILED',
+          null,
+          response.status,
+        );
       const envelope = (await response.json()) as {
         success?: boolean;
         data?: { csrfToken?: string };
       };
       const token = envelope.data?.csrfToken;
-      if (!token) throw new ApiError('CSRF setup failed', 'CSRF_FAILED', null, 200);
+      if (!token)
+        throw new ApiError('CSRF setup failed', 'CSRF_FAILED', null, 200);
       csrfToken = token;
       return token;
     })
@@ -901,7 +942,9 @@ export const api = {
     return normalizeAdminCategoryTree(data.categories);
   },
   adminFaqs: () => apiRequest<{ items: AdminFaq[] }>('/admin/faqs'),
-  createAdminFaq: async (input: Omit<AdminFaq, '_id' | 'createdAt' | 'updatedAt'>) =>
+  createAdminFaq: async (
+    input: Omit<AdminFaq, '_id' | 'createdAt' | 'updatedAt'>,
+  ) =>
     unwrapObject<AdminFaq>(
       await apiRequest<{ faq: AdminFaq }>('/admin/faqs', {
         method: 'POST',
@@ -914,10 +957,13 @@ export const api = {
     input: Partial<Omit<AdminFaq, '_id' | 'createdAt' | 'updatedAt'>>,
   ) =>
     unwrapObject<AdminFaq>(
-      await apiRequest<{ faq: AdminFaq }>(`/admin/faqs/${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        body: input,
-      }),
+      await apiRequest<{ faq: AdminFaq }>(
+        `/admin/faqs/${encodeURIComponent(id)}`,
+        {
+          method: 'PATCH',
+          body: input,
+        },
+      ),
       'faq',
     ),
   deleteAdminFaq: (id: string) =>
