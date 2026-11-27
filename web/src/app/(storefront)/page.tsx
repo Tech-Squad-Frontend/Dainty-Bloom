@@ -243,7 +243,7 @@ export default async function HomePage() {
               All categories <ArrowRight aria-hidden="true" size={16} />
             </Link>
           </div>
-          <div className="product-lines-grid">
+          <div className="home-rail home-rail--categories">
             {featuredCategories.map(({ category, product }) => (
               <Link
                 className="product-line-card home-category-product-card"
@@ -261,7 +261,7 @@ export default async function HomePage() {
                       product.primaryImage.alt,
                     )}
                     fill
-                    sizes="(max-width: 479px) 90vw, (max-width: 767px) 44vw, (max-width: 1023px) 44vw, 23vw"
+                    sizes="(max-width: 767px) 44vw, (max-width: 1023px) 31vw, 23vw"
                   />
                 </div>
                 <h3>{category.name}</h3>
@@ -434,7 +434,10 @@ export default async function HomePage() {
                   View all <ArrowRight aria-hidden="true" size={16} />
                 </Link>
               </div>
-              <ProductGrid products={featured} />
+              <ProductGrid
+                products={featured}
+                className="home-rail home-rail--products"
+              />
             </section>
           ) : null}
           {newResult.unavailable ? (

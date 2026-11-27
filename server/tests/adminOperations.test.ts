@@ -24,6 +24,8 @@ vi.mock('nodemailer', () => ({
 
 import { env } from '../src/config/env';
 import { app } from '../src/app';
+import { listAdminOrders } from '../src/services/adminOrder.service';
+import { adminOrderListSchema } from '../src/validators/order.validators';
 import {
   AuditEvent,
   ArtworkAsset,
@@ -219,6 +221,37 @@ describe('admin operational workflows', () => {
         },
       },
     });
+  });
+
+  it('defaults the Orders view to confirmed payment states and retains reconciliation tabs', async () => {
+    const inProduction = await createOrder('in_printing', 'paid');
+    const shipped = await createOrder('shipped', 'partially_refunded');
+    const completed = await createOrder('completed', 'refunded');
+    const cancelled = await createOrder('cancelled', 'refund_due');
+    const pending = await createOrder('pending_payment', 'pending');
+    const failed = await createOrder('pending_payment', 'failed');
+    const parseQuery = (query: Record<string, string> = {}) =>
+      adminOrderListSchema.parse({ params: {}, query }).query;
+
+    const operational = await listAdminOrders(parseQuery());
+    expect(operational.pagination.total).toBe(4);
+    expect(operational.items.map((order) => order.id).sort()).toEqual(
+      [inProduction, shipped, completed, cancelled]
+        .map((order) => order._id.toString())
+        .sort(),
+    );
+
+    const allOrders = await listAdminOrders(parseQuery({ tab: 'all' }));
+    expect(allOrders.pagination.total).toBe(6);
+
+    const pendingOrders = await listAdminOrders(
+      parseQuery({ tab: 'pending_payment' }),
+    );
+    expect(pendingOrders.pagination.total).toBe(2);
+    expect(pendingOrders.items.map((order) => order.id).sort()).toEqual(
+      [pending, failed].map((order) => order._id.toString()).sort(),
+    );
+    expect(await Order.countDocuments()).toBe(6);
   });
 
   it('updates message status through the existing staff workflow', async () => {
@@ -830,7 +863,17 @@ async function signInWithIdentity(
   };
 }
 
-async function createOrder(status: 'in_printing' | 'pending_payment') {
+async function createOrder(
+  status:
+    'in_printing' | 'pending_payment' | 'shipped' | 'completed' | 'cancelled',
+  paymentStatus:
+    | 'pending'
+    | 'paid'
+    | 'failed'
+    | 'refunded'
+    | 'partially_refunded'
+    | 'refund_due' = 'paid',
+) {
   const address = {
     line1: '123 Example Street',
     city: 'Example City',
@@ -858,7 +901,7 @@ async function createOrder(status: 'in_printing' | 'pending_payment') {
     subtotalMinor: 3000,
     totalMinor: 3000,
     currency: 'USD',
-    payment: { status: 'paid' },
+    payment: { status: paymentStatus },
     status,
   });
 }

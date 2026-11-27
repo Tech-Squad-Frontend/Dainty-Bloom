@@ -456,6 +456,7 @@ export function ProductEditor({ productId }: { productId?: string }) {
   const { can } = usePermissions();
   const canWrite = can('products:write');
   const settings = useSettings();
+  const isNewProductEditorRef = useRef(productId === undefined);
   const [createdProduct, setCreatedProduct] = useState<AdminProduct | null>(
     null,
   );
@@ -511,6 +512,8 @@ export function ProductEditor({ productId }: { productId?: string }) {
   const activeProductIdRef = useRef(productId);
   const assignmentInFlightRef = useRef(new Set<string>());
   const saveInFlightRef = useRef(false);
+  const navigateAfterUploadsRef = useRef(false);
+  const navigationStartedRef = useRef(false);
   const [serverError, setServerError] = useState('');
   const [saveNotice, setSaveNotice] = useState('');
   const [mediaConflictMessage, setMediaConflictMessage] = useState('');
@@ -541,6 +544,20 @@ export function ProductEditor({ productId }: { productId?: string }) {
     const next = update(pendingRef.current);
     pendingRef.current = next;
     setPending(next);
+  }
+
+  function navigateToProductsWhenReady() {
+    if (
+      !isNewProductEditorRef.current ||
+      !navigateAfterUploadsRef.current ||
+      saveInFlightRef.current ||
+      pendingRef.current.length > 0 ||
+      navigationStartedRef.current
+    ) {
+      return;
+    }
+    navigationStartedRef.current = true;
+    router.replace('/admin/products');
   }
 
   useEffect(
@@ -1122,6 +1139,7 @@ export function ProductEditor({ productId }: { productId?: string }) {
               : image,
           ),
         );
+        navigateToProductsWhenReady();
       }
     };
     uploadQueueRef.current = uploadQueueRef.current.then(run, run);
@@ -1156,6 +1174,7 @@ export function ProductEditor({ productId }: { productId?: string }) {
 
   async function save(valuesToSave: ProductFormValues) {
     if (saveInFlightRef.current) return;
+    navigateAfterUploadsRef.current = false;
     saveInFlightRef.current = true;
     setServerError('');
     setSaveNotice('');
@@ -1196,6 +1215,9 @@ export function ProductEditor({ productId }: { productId?: string }) {
           }),
           queryClient.invalidateQueries({ queryKey: ['admin-products'] }),
         ]);
+        if (isNewProductEditorRef.current) {
+          navigateAfterUploadsRef.current = true;
+        }
       }
 
       setSaveNotice(
@@ -1215,9 +1237,6 @@ export function ProductEditor({ productId }: { productId?: string }) {
         setSaveNotice(
           `Product details saved. ${savedImageCount} image${savedImageCount === 1 ? '' : 's'} saved.`,
         );
-      }
-      if (!createdDuringSave && remainingImageCount === 0) {
-        router.replace('/admin/products');
       }
     } catch (error) {
       if (error instanceof ApiError && error.code === 'SKU_ALREADY_EXISTS') {
@@ -1244,6 +1263,7 @@ export function ProductEditor({ productId }: { productId?: string }) {
       }
     } finally {
       saveInFlightRef.current = false;
+      navigateToProductsWhenReady();
     }
   }
 

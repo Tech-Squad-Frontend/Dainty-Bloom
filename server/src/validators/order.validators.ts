@@ -132,6 +132,7 @@ export const adminOrderListSchema = z.object({
       limit: z.coerce.number().int().min(1).max(100).default(25),
       tab: z
         .enum([
+          'paid',
           'all',
           'pending_payment',
           'pending_proof_approval',
@@ -142,7 +143,7 @@ export const adminOrderListSchema = z.object({
           'completed',
           'cancelled',
         ])
-        .default('all'),
+        .default('paid'),
       q: z.string().trim().max(200).optional(),
       from: z.coerce.date().optional(),
       to: z.coerce.date().optional(),

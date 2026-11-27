@@ -12,6 +12,7 @@ import type { AdminOrderDetail, AdminOrderStatus } from '@/lib/api/types';
 import { formatMoney } from '@/lib/utils/formatMoney';
 
 const ORDER_TABS: Array<{ value: string; label: string }> = [
+  { value: 'paid', label: 'Paid orders' },
   { value: 'all', label: 'All orders' },
   { value: 'pending_payment', label: 'Pending payment' },
   { value: 'pending_proof_approval', label: 'Proof approval' },
@@ -96,7 +97,7 @@ export function AdminOrdersManagement({
 }: {
   initialQuery?: string;
 }) {
-  const [tab, setTab] = useState('all');
+  const [tab, setTab] = useState('paid');
   const [search, setSearch] = useState(initialQuery);
   const [query, setQuery] = useState(initialQuery);
   const [page, setPage] = useState(1);

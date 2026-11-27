@@ -281,12 +281,14 @@ export function ProductCard({
 export function ProductGrid({
   products,
   lightingState,
+  className,
 }: {
   products: CatalogCard[];
   lightingState?: 'on' | 'off';
+  className?: string;
 }) {
   return (
-    <div className="product-grid">
+    <div className={className ? 'product-grid ' + className : 'product-grid'}>
       {products.map((product) => (
         <ProductCard
           key={product.id}

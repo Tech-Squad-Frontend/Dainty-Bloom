@@ -16,10 +16,17 @@ import {
 } from './orderWorkflow.service';
 import type { OrderStatus as LifecycleStatus } from '../constants/order';
 
+const CONFIRMED_PAYMENT_STATUSES = [
+  'paid',
+  'partially_refunded',
+  'refunded',
+  'refund_due',
+] as const;
+
 export interface AdminOrderListQuery {
   page: number;
   limit: number;
-  tab: 'all' | LifecycleStatus;
+  tab: 'all' | 'paid' | LifecycleStatus;
   q?: string;
   from?: Date;
   to?: Date;
@@ -710,9 +717,7 @@ export async function listCustomers(query: {
           {
             $match: {
               $expr: { $eq: ['$user', '$$customerId'] },
-              'payment.status': {
-                $in: ['paid', 'partially_refunded', 'refunded', 'refund_due'],
-              },
+              'payment.status': { $in: CONFIRMED_PAYMENT_STATUSES },
             },
           },
           {
@@ -781,7 +786,11 @@ export async function getCustomerAdminDetail(id: string) {
 
 function buildOrderMatch(query: AdminOrderListQuery): Record<string, unknown> {
   const match: Record<string, unknown> = {};
-  if (query.tab !== 'all') match.status = query.tab;
+  if (query.tab === 'paid') {
+    match['payment.status'] = { $in: CONFIRMED_PAYMENT_STATUSES };
+  } else if (query.tab !== 'all') {
+    match.status = query.tab;
+  }
   if (query.from || query.to) {
     match.createdAt = {
       ...(query.from ? { $gte: query.from } : {}),
